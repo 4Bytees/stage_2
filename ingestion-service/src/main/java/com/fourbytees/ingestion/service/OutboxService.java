@@ -19,7 +19,6 @@ public class OutboxService {
             String path = storage.isBookDownloaded(bookId) ? "datalake/..." : "";
             BookDownloaded event = new BookDownloaded(UUID.randomUUID().toString(), bookId, path);
             System.out.println("[OUTBOX] Evento auditado/republicado para libro ID: " + bookId);
-            // Cuando ActiveMQ esté activo en docker-compose, se envía el evento por la cola
         }
     }
 }
