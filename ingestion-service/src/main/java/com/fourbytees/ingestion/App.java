@@ -16,7 +16,6 @@ public class App {
         OutboxService outboxService = new OutboxService(storage);
         IngestionController controller = new IngestionController(downloader, storage);
 
-        // Ejecutar Outbox al arrancar para republicar si hubiese pendientes
         outboxService.runOutboxCheck();
 
         Javalin app = Javalin.create(config -> {
