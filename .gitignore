@@ -1,0 +1,14 @@
+target/
+*.class
+*.jar
+*.exe
+*.o
+datalake/*
+!datalake/.gitkeep
+datamarts/*
+!datamarts/.gitkeep
+.idea/
+*.iml
+.vscode/
+.DS_Store
+*.log
