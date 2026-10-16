@@ -16,11 +16,9 @@ public class IngestionServiceTest {
         DatalakeStorage storage = new DatalakeStorage(tempDir.toString());
         int bookId = 9999;
 
-        // Primera guardada
         String path = storage.saveBook(bookId, "Header Content", "Body Content");
         assertTrue(storage.isBookDownloaded(bookId));
 
-        // Segunda guardada (Idempotencia)
         String pathSecond = storage.saveBook(bookId, "Header Content", "Body Content");
         assertEquals(path, pathSecond);
     }
