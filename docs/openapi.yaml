@@ -1,0 +1,385 @@
+openapi: 3.0.3
+info:
+  title: Search Engine Service Architecture API
+  description: |
+    API Specification for Stage 2 Service-Oriented Architecture (SOA) Search Engine.
+    
+    ### API Inventories Classification:
+    1. **Front-End-Facing APIs**: Public endpoints used by web or mobile clients to execute searches and retrieve book metadata.
+    2. **Internal Service APIs**: Private endpoints used internally between services and the coordination module.
+    3. **Operational / Administrative APIs**: Health checks, system status, and batch rebuild management.
+  version: 1.0.0
+servers:
+  - url: http://localhost:7000
+    description: Search Service Server
+  - url: http://localhost:7001
+    description: Ingestion Service Server
+  - url: http://localhost:7002
+    description: Indexing Service Server
+
+paths:
+  /search:
+    get:
+      tags:
+        - "Front-End-Facing API"
+      summary: Search books by term with optional filters and pagination
+      description: |
+        Provider: Search Service
+        Consumer: Front-End / Web Client
+        
+        Performs full-text keyword search ordered by TF-IDF score (descending) with tie-breaking by book_id.
+        Supports filtering by author (case-insensitive substring match), language, and publication year.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query keyword.
+          schema:
+            type: string
+          example: "adventure"
+        - name: author
+          in: query
+          required: false
+          description: Case-insensitive author name substring filter.
+          schema:
+            type: string
+          example: "austen"
+        - name: language
+          in: query
+          required: false
+          description: ISO language code filter.
+          schema:
+            type: string
+          example: "en"
+        - name: year
+          in: query
+          required: false
+          description: Publication year filter (must be an integer).
+          schema:
+            type: integer
+          example: 1813
+        - name: offset
+          in: query
+          required: false
+          description: Pagination offset (must be >= 0). Default is 0.
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          example: 0
+        - name: limit
+          in: query
+          required: false
+          description: Pagination limit (must be between 1 and 100). Default is 20.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          example: 20
+      responses:
+        '200':
+          description: Search executed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              example:
+                query: "adventure"
+                filters:
+                  language: "en"
+                total: 25
+                offset: 0
+                limit: 20
+                results:
+                  - book_id: 5
+                    title: "Robinson Crusoe"
+                    author: "Daniel Defoe"
+                    language: "en"
+                    year: 1719
+                  - book_id: 1342
+                    title: "Pride and Prejudice"
+                    author: "Jane Austen"
+                    language: "en"
+                    year: 1813
+        '400':
+          description: Bad Request - Invalid query parameters (e.g. limit=-1, year=abc).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Bad Request"
+                message: "Parameter 'year' must be a valid integer."
+
+  /books/{id}:
+    get:
+      tags:
+        - "Front-End-Facing API"
+      summary: Retrieve complete metadata for a specific book
+      description: |
+        Provider: Search Service
+        Consumer: Front-End / Web Client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique Project Gutenberg Book ID.
+          schema:
+            type: integer
+          example: 1342
+      responses:
+        '200':
+          description: Book metadata found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+              example:
+                book_id: 1342
+                title: "Pride and Prejudice"
+                author: "Jane Austen"
+                language: "en"
+                year: 1813
+        '404':
+          description: Book not found in metadata repository.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Not Found"
+                message: "Book with ID 1342 was not found."
+
+  /search/filters:
+    get:
+      tags:
+        - "Front-End-Facing API"
+      summary: Get available search filter values
+      description: |
+        Provider: Search Service
+        Consumer: Front-End / Web Client
+      responses:
+        '200':
+          description: Available filter categories and distinct values.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  languages:
+                    type: array
+                    items:
+                      type: string
+                  years:
+                    type: array
+                    items:
+                      type: integer
+              example:
+                languages: ["en", "es", "fr"]
+                years: [1719, 1813, 1851, 1897]
+
+  /ingest/{book_id}:
+    post:
+      tags:
+        - "Internal Service API"
+      summary: Trigger ingestion and splitting of a raw book
+      description: |
+        Provider: Ingestion Service
+        Consumer: Control Module / Orchestrator
+        
+        Downloads the book from Project Gutenberg and splits content into header/body in datalake.
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1342
+      responses:
+        '200':
+          description: Ingestion successfully initiated/completed.
+          content:
+            application/json:
+              example:
+                book_id: 1342
+                status: "downloaded"
+                path: "datalake/20261026/18/1342"
+
+  /ingest/status/{book_id}:
+    get:
+      tags:
+        - "Internal Service API"
+      summary: Check download state of a specific book
+      description: |
+        Provider: Ingestion Service
+        Consumer: Control Module / Indexing Service
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1342
+      responses:
+        '200':
+          description: Ingestion status response.
+          content:
+            application/json:
+              example:
+                book_id: 1342
+                status: "available"
+
+  /index/update/{book_id}:
+    post:
+      tags:
+        - "Internal Service API"
+      summary: Incrementally process book text and update inverted index
+      description: |
+        Provider: Indexing Service
+        Consumer: Control Module / Orchestrator
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1342
+      responses:
+        '200':
+          description: Book successfully indexed into Hazelcast datamart.
+          content:
+            application/json:
+              example:
+                book_id: 1342
+                index: "updated"
+
+  /status:
+    get:
+      tags:
+        - "Operational / Administrative API"
+      summary: Health check and service status
+      description: |
+        Provider: Search / Ingestion / Indexing Service
+        Consumer: Monitoring / Health Checker
+      responses:
+        '200':
+          description: Service is online and operational.
+          content:
+            application/json:
+              example:
+                service: "search-service"
+                status: "running"
+                hazelcast_status: "connected"
+                sqlite_status: "read-only-connected"
+
+  /ingest/list:
+    get:
+      tags:
+        - "Operational / Administrative API"
+      summary: List all ingested book IDs stored in datalake
+      description: |
+        Provider: Ingestion Service
+        Consumer: Control Module / Admin Dashboard
+      responses:
+        '200':
+          description: List of ingested book IDs.
+          content:
+            application/json:
+              example:
+                count: 120
+                books: [5, 12, 17, 42, 1342]
+
+  /index/rebuild:
+    post:
+      tags:
+        - "Operational / Administrative API"
+      summary: Rebuild inverted index and metadata from full datalake
+      description: |
+        Provider: Indexing Service
+        Consumer: Admin / Control Module
+      responses:
+        '200':
+          description: Full index rebuild complete.
+          content:
+            application/json:
+              example:
+                books_processed: 1000
+                elapsed_time: "35.2s"
+
+  /index/status:
+    get:
+      tags:
+        - "Operational / Administrative API"
+      summary: Retrieve indexing metrics and statistics
+      description: |
+        Provider: Indexing Service
+        Consumer: Admin Dashboard / Monitoring
+      responses:
+        '200':
+          description: Indexing statistics.
+          content:
+            application/json:
+              example:
+                books_indexed: 1200
+                last_update: "2026-10-26T18:00:00Z"
+                index_size_MB: 42.7
+
+components:
+  schemas:
+    Book:
+      type: object
+      required:
+        - book_id
+        - title
+        - author
+        - language
+        - year
+      properties:
+        book_id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        language:
+          type: string
+        year:
+          type: integer
+
+    SearchResponse:
+      type: object
+      required:
+        - query
+        - total
+        - offset
+        - limit
+        - results
+      properties:
+        query:
+          type: string
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string

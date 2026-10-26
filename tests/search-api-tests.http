@@ -1,0 +1,68 @@
+### =========================================================================
+### SEARCH SERVICE HTTP TEST SUITE (P3)
+### =========================================================================
+
+@baseUrl = http://localhost:7000
+
+### 1. Health Check & Operational Status
+GET {{baseUrl}}/status
+
+### 2. Get Available Search Filters (Languages & Years)
+GET {{baseUrl}}/search/filters
+
+### =========================================================================
+### SEARCH TESTS (`GET /search`)
+### =========================================================================
+
+### 3. Basic Keyword Search (Mandatory parameter 'q')
+GET {{baseUrl}}/search?q=adventure
+
+### 4. Search with Individual Filter (Language = English)
+GET {{baseUrl}}/search?q=love&language=en
+
+### 5. Search with Individual Filter (Author substring case-insensitive = austen)
+GET {{baseUrl}}/search?q=pride&author=austen
+
+### 6. Search with Individual Filter (Publication Year = 1813)
+GET {{baseUrl}}/search?q=prejudice&year=1813
+
+### 7. Search with Combined Filters (Author, Language, and Year)
+GET {{baseUrl}}/search?q=love&author=austen&language=en&year=1813
+
+### 8. Search with Pagination (Offset 0, Limit 5)
+GET {{baseUrl}}/search?q=the&offset=0&limit=5
+
+### 9. Search with Pagination (Offset 5, Limit 5)
+GET {{baseUrl}}/search?q=the&offset=5&limit=5
+
+### 10. Search with No Results (Returns 200 OK with empty results array)
+GET {{baseUrl}}/search?q=nonexistentterm123456789
+
+### =========================================================================
+### ERROR HANDLING VALIDATION TESTS (Expected 400 Bad Request)
+### =========================================================================
+
+### 11. Error: Missing mandatory 'q' parameter
+GET {{baseUrl}}/search
+
+### 12. Error: Malformed limit parameter (limit = -1, out of bounds)
+GET {{baseUrl}}/search?q=adventure&limit=-1
+
+### 13. Error: Malformed limit parameter (limit = 200, exceeds max 100)
+GET {{baseUrl}}/search?q=adventure&limit=200
+
+### 14. Error: Malformed year parameter (year = abc, not an integer)
+GET {{baseUrl}}/search?q=adventure&year=abc
+
+### 15. Error: Malformed offset parameter (offset = xyz, not an integer)
+GET {{baseUrl}}/search?q=adventure&offset=xyz
+
+### =========================================================================
+### BOOK METADATA TESTS (`GET /books/{id}`)
+### =========================================================================
+
+### 16. Get Book Metadata by ID (Existing Book - Pride and Prejudice ID 1342)
+GET {{baseUrl}}/books/1342
+
+### 17. Get Book Metadata by ID (Non-existent Book - Expected 404 Not Found)
+GET {{baseUrl}}/books/99999999
