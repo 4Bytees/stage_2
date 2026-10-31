@@ -77,7 +77,11 @@ public class SqliteRepository {
                     insBook.setString(2, meta.title());
                     insBook.setString(3, meta.author());
                     insBook.setString(4, meta.language());
-                    insBook.setInt(5, meta.year());
+                    if (meta.year() != null) {
+                        insBook.setInt(5, meta.year());
+                    } else {
+                        insBook.setNull(5, Types.INTEGER);
+                    }
                     insBook.executeUpdate();
                 }
 
