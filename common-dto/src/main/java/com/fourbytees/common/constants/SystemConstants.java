@@ -9,6 +9,9 @@ public final class SystemConstants {
     public static final String STATE_FAILED = "FAILED";
 
     public static final String MAP_BOOK_STATE = "book-state";
+    public static final String MAP_BOOK_CLAIMS = "book-claims";
+    public static final String MAP_BOOK_RETRIES = "book-retries";
+
     public static final String LOCK_INDEX_WRITER = "index-writer";
     public static final String ATOMIC_INDEX_VERSION = "index-published-version";
 
