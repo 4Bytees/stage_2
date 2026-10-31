@@ -1,48 +1,61 @@
 package com.fourbytees.search.config;
 
-import com.hazelcast.client.HazelcastClient;
-import com.hazelcast.client.config.ClientConfig;
+import com.fourbytees.common.constants.SystemConstants;
+import com.fourbytees.common.factory.HazelcastClientFactory;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.map.IMap;
-
-import java.util.HashMap;
-import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HazelcastConfig {
+    private static final Logger log = LoggerFactory.getLogger(HazelcastConfig.class);
+
     private HazelcastInstance hazelcastClient;
 
     public HazelcastConfig() {
+        String hzAddress = getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "localhost:5701"));
+        String hzCluster = getEnvOrDefault("HZ_CLUSTER_NAME", getEnvOrDefault("HAZELCAST_CLUSTER_NAME", "dev"));
+
         try {
-            ClientConfig clientConfig = new ClientConfig();
-            clientConfig.setClusterName("dev");
-            this.hazelcastClient = HazelcastClient.newHazelcastClient(clientConfig);
+            log.info("Conectando Search Service a Hazelcast en {} (cluster: {})...", hzAddress, hzCluster);
+            this.hazelcastClient = HazelcastClientFactory.create(hzAddress, hzCluster);
+            log.info("Search Service conectado exitosamente a Hazelcast.");
         } catch (Exception e) {
-            System.err.println("[HazelcastConfig] Warning: Standalone mode or Hazelcast server not found. " + e.getMessage());
+            log.warn("[HazelcastConfig] ADVERTENCIA: No se pudo conectar a Hazelcast en {}. El servicio operará en modo degradado (consultas directas a SQLite): {}",
+                    hzAddress, e.getMessage());
             this.hazelcastClient = null;
         }
     }
 
-    public String getPublishedIndexVersion() {
-        if (hazelcastClient == null) return "v1";
-        IMap<String, String> metaMap = hazelcastClient.getMap("index_metadata");
-        return metaMap.getOrDefault("published_version", "v1");
+    public HazelcastConfig(HazelcastInstance client) {
+        this.hazelcastClient = client;
     }
 
-    public Map<Integer, Double> getPostingsForTerm(String term) {
-        Map<Integer, Double> postings = new HashMap<>();
-        if (hazelcastClient == null) return postings;
-
-        String currentVersion = getPublishedIndexVersion();
-        IMap<String, Map<Integer, Double>> indexMap = hazelcastClient.getMap("inverted_index_" + currentVersion);
-        
-        Map<Integer, Double> result = indexMap.get(term.toLowerCase());
-        if (result != null) {
-            postings.putAll(result);
+    public String getPublishedIndexVersion() {
+        if (hazelcastClient == null) {
+            return "unknown";
         }
-        return postings;
+        try {
+            if (!hazelcastClient.getLifecycleService().isRunning()) {
+                return "unknown";
+            }
+            long version = hazelcastClient.getCPSubsystem()
+                    .getAtomicLong(SystemConstants.ATOMIC_INDEX_VERSION)
+                    .get();
+            return String.valueOf(version);
+        } catch (Exception e) {
+            log.warn("Error leyendo versión publicada desde Hazelcast: {}", e.getMessage());
+            return "unknown";
+        }
     }
 
     public boolean isConnected() {
         return hazelcastClient != null && hazelcastClient.getLifecycleService().isRunning();
+    }
+
+    private static String getEnvOrDefault(String key, String defaultValue) {
+        String prop = System.getProperty(key);
+        if (prop != null && !prop.isBlank()) return prop;
+        String val = System.getenv(key);
+        return (val != null && !val.isBlank()) ? val : defaultValue;
     }
 }

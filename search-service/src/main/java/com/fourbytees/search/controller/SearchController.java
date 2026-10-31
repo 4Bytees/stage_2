@@ -2,16 +2,19 @@ package com.fourbytees.search.controller;
 
 import com.fourbytees.search.config.HazelcastConfig;
 import com.fourbytees.search.db.DatabaseManager;
-import com.fourbytees.search.model.Book;
 import com.fourbytees.search.model.ErrorResponse;
 import com.fourbytees.search.model.SearchResponse;
 import com.google.gson.Gson;
 import io.javalin.http.Context;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.sql.SQLException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class SearchController {
+    private static final Logger log = LoggerFactory.getLogger(SearchController.class);
+
     private final HazelcastConfig hazelcastConfig;
     private final DatabaseManager databaseManager;
     private final Gson gson;
@@ -29,84 +32,82 @@ public class SearchController {
             return;
         }
 
+        // Defaults: offset=0, limit=20 (máximo 100)
         int offset = 0;
         int limit = 20;
-        try {
-            String offsetStr = ctx.queryParam("offset");
-            if (offsetStr != null) offset = Integer.parseInt(offsetStr);
-            
-            String limitStr = ctx.queryParam("limit");
-            if (limitStr != null) limit = Integer.parseInt(limitStr);
-        } catch (NumberFormatException e) {
-            ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameters 'offset' and 'limit' must be valid integers.")));
-            return;
+
+        String offsetStr = ctx.queryParam("offset");
+        if (offsetStr != null && !offsetStr.isBlank()) {
+            try {
+                offset = Integer.parseInt(offsetStr.trim());
+            } catch (NumberFormatException e) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'offset' must be a valid integer.")));
+                return;
+            }
+            if (offset < 0) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'offset' must be greater than or equal to 0.")));
+                return;
+            }
         }
 
-        if (offset < 0 || limit < 1 || limit > 100) {
-            ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Invalid pagination: offset must be >= 0 and limit between 1 and 100.")));
-            return;
+        String limitStr = ctx.queryParam("limit");
+        if (limitStr != null && !limitStr.isBlank()) {
+            try {
+                limit = Integer.parseInt(limitStr.trim());
+            } catch (NumberFormatException e) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'limit' must be a valid integer.")));
+                return;
+            }
+            if (limit < 1 || limit > 100) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'limit' must be between 1 and 100.")));
+                return;
+            }
         }
 
         String authorFilter = ctx.queryParam("author");
+
         String langFilter = ctx.queryParam("language");
+        if (langFilter != null && !langFilter.isBlank()) {
+            langFilter = langFilter.trim().toLowerCase();
+            if (!DatabaseManager.SUPPORTED_LANGUAGES.contains(langFilter)) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request",
+                        "Language filter '" + langFilter + "' is not supported. Supported ISO codes: " + DatabaseManager.SUPPORTED_LANGUAGES)));
+                return;
+            }
+        }
+
         Integer yearFilter = null;
+        String yearStr = ctx.queryParam("year");
+        if (yearStr != null && !yearStr.isBlank()) {
+            try {
+                yearFilter = Integer.parseInt(yearStr.trim());
+            } catch (NumberFormatException e) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'year' must be a valid 4-digit integer.")));
+                return;
+            }
+            if (yearFilter < 1000 || yearFilter > 9999) {
+                ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'year' must be a 4-digit integer (e.g. 1813).")));
+                return;
+            }
+        }
+
+        DatabaseManager.SearchResult searchResult;
         try {
-            String yearStr = ctx.queryParam("year");
-            if (yearStr != null) yearFilter = Integer.parseInt(yearStr);
-        } catch (NumberFormatException e) {
-            ctx.status(400).result(gson.toJson(new ErrorResponse("Bad Request", "Parameter 'year' must be a valid integer.")));
+            searchResult = databaseManager.searchByTerm(
+                    q, authorFilter, langFilter, yearFilter, offset, limit
+            );
+        } catch (SQLException e) {
+            log.error("Fallo de acceso a base de datos en /search", e);
+            ctx.status(500).result(gson.toJson(new ErrorResponse("Internal Server Error", "Database error occurred while executing search: " + e.getMessage())));
             return;
         }
 
-        Map<Integer, Double> postings = hazelcastConfig.getPostingsForTerm(q.trim().toLowerCase());
-
-        List<SearchResultItem> matchedItems = new ArrayList<>();
-        for (Map.Entry<Integer, Double> entry : postings.entrySet()) {
-            int bookId = entry.getKey();
-            double tfIdfScore = entry.getValue();
-
-            Book book = databaseManager.getBookById(bookId);
-            if (book == null) continue;
-
-            if (langFilter != null && !langFilter.equalsIgnoreCase(book.getLanguage())) continue;
-            if (yearFilter != null && yearFilter != book.getYear()) continue;
-            if (authorFilter != null && (book.getAuthor() == null || !book.getAuthor().toLowerCase().contains(authorFilter.toLowerCase()))) continue;
-
-            matchedItems.add(new SearchResultItem(book, tfIdfScore));
-        }
-
-        matchedItems.sort((a, b) -> {
-            int scoreComparison = Double.compare(b.tfIdfScore, a.tfIdfScore);
-            if (scoreComparison != 0) {
-                return scoreComparison;
-            }
-            return Integer.compare(a.book.getBook_id(), b.book.getBook_id());
-        });
-
-        int totalMatches = matchedItems.size();
-
-        int start = Math.min(offset, totalMatches);
-        int end = Math.min(start + limit, totalMatches);
-        List<Book> paginatedBooks = matchedItems.subList(start, end).stream()
-                .map(item -> item.book)
-                .collect(Collectors.toList());
-
         Map<String, String> appliedFilters = new HashMap<>();
-        if (authorFilter != null) appliedFilters.put("author", authorFilter);
-        if (langFilter != null) appliedFilters.put("language", langFilter);
+        if (authorFilter != null && !authorFilter.isBlank()) appliedFilters.put("author", authorFilter);
+        if (langFilter != null && !langFilter.isBlank()) appliedFilters.put("language", langFilter);
         if (yearFilter != null) appliedFilters.put("year", String.valueOf(yearFilter));
 
-        SearchResponse response = new SearchResponse(q, appliedFilters, totalMatches, offset, limit, paginatedBooks);
+        SearchResponse response = new SearchResponse(q, appliedFilters, searchResult.total(), offset, limit, searchResult.books());
         ctx.status(200).result(gson.toJson(response));
-    }
-
-    private static class SearchResultItem {
-        Book book;
-        double tfIdfScore;
-
-        public SearchResultItem(Book book, double tfIdfScore) {
-            this.book = book;
-            this.tfIdfScore = tfIdfScore;
-        }
     }
 }
