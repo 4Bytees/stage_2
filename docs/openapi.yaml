@@ -28,7 +28,8 @@ paths:
         Consumer: Front-End / Web Client
         
         Performs full-text keyword search ordered by TF-IDF score (descending) with tie-breaking by book_id.
-        Supports filtering by author (case-insensitive substring match), language, and publication year.
+        Supports filtering by author (case-insensitive substring match), language (supported ISO codes), and publication year (4-digit integer).
+        Normalizes terms using Stage 1 tokenization regex (\b[a-z]{3,}\b) and stop words (returns empty 200 OK for stop words or non-valid terms).
       parameters:
         - name: q
           in: query
@@ -47,16 +48,19 @@ paths:
         - name: language
           in: query
           required: false
-          description: ISO language code filter.
+          description: ISO 639-1 language code filter.
           schema:
             type: string
+            enum: [en, es, fr, de, it, pt, la, nl, ru, zh, ja, el]
           example: "en"
         - name: year
           in: query
           required: false
-          description: Publication year filter (must be an integer).
+          description: 4-digit publication year filter (must be an integer between 1000 and 9999).
           schema:
             type: integer
+            minimum: 1000
+            maximum: 9999
           example: 1813
         - name: offset
           in: query
@@ -103,14 +107,14 @@ paths:
                     language: "en"
                     year: 1813
         '400':
-          description: Bad Request - Invalid query parameters (e.g. limit=-1, year=abc).
+          description: Bad Request - Invalid query parameters (e.g. limit=-1, year=abc, unsupported language).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: "Bad Request"
-                message: "Parameter 'year' must be a valid integer."
+                message: "Parameter 'year' must be a valid 4-digit integer."
 
   /books/{id}:
     get:
@@ -247,7 +251,7 @@ paths:
           example: 1342
       responses:
         '200':
-          description: Book successfully indexed into Hazelcast datamart.
+          description: Book successfully indexed into SQLite datamart.
           content:
             application/json:
               example:
@@ -272,6 +276,7 @@ paths:
                 status: "running"
                 hazelcast_status: "connected"
                 sqlite_status: "read-only-connected"
+                active_index_version: "42"
 
   /ingest/list:
     get:
