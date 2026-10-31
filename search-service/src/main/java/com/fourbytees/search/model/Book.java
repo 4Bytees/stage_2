@@ -1,4 +1,4 @@
-package com.fourbytes.search.model;
+package com.fourbytees.search.model;
 
 public class Book {
     private int book_id;

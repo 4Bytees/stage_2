@@ -11,4 +11,4 @@ datamarts/*
 *.iml
 .vscode/
 .DS_Store
-*.log
+*.log**/dependency-reduced-pom.xml

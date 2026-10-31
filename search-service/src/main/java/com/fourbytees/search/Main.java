@@ -1,10 +1,10 @@
-package com.fourbytes.search;
+package com.fourbytees.search;
 
-import com.fourbytes.search.config.HazelcastConfig;
-import com.fourbytes.search.controller.BookController;
-import com.fourbytes.search.controller.SearchController;
-import com.fourbytes.search.controller.StatusController;
-import com.fourbytes.search.db.DatabaseManager;
+import com.fourbytees.search.config.HazelcastConfig;
+import com.fourbytees.search.controller.BookController;
+import com.fourbytees.search.controller.SearchController;
+import com.fourbytees.search.controller.StatusController;
+import com.fourbytees.search.db.DatabaseManager;
 import com.google.gson.Gson;
 import io.javalin.Javalin;
 import io.javalin.plugin.bundled.CorsPluginConfig;

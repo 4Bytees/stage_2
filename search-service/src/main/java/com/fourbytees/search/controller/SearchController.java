@@ -1,10 +1,10 @@
-package com.fourbytes.search.controller;
+package com.fourbytees.search.controller;
 
-import com.fourbytes.search.config.HazelcastConfig;
-import com.fourbytes.search.db.DatabaseManager;
-import com.fourbytes.search.model.Book;
-import com.fourbytes.search.model.ErrorResponse;
-import com.fourbytes.search.model.SearchResponse;
+import com.fourbytees.search.config.HazelcastConfig;
+import com.fourbytees.search.db.DatabaseManager;
+import com.fourbytees.search.model.Book;
+import com.fourbytees.search.model.ErrorResponse;
+import com.fourbytees.search.model.SearchResponse;
 import com.google.gson.Gson;
 import io.javalin.http.Context;
 

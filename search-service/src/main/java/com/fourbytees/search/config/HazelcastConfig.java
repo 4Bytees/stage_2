@@ -1,4 +1,4 @@
-package com.fourbytes.search.config;
+package com.fourbytees.search.config;
 
 import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.client.config.ClientConfig;

@@ -1,6 +1,6 @@
-package com.fourbytes.search.controller;
+package com.fourbytees.search.controller;
 
-import com.fourbytes.search.config.HazelcastConfig;
+import com.fourbytees.search.config.HazelcastConfig;
 import com.google.gson.Gson;
 import io.javalin.http.Context;
 

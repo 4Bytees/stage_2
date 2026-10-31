@@ -1,4 +1,4 @@
-package com.fourbytes.search.model;
+package com.fourbytees.search.model;
 
 import java.util.List;
 import java.util.Map;

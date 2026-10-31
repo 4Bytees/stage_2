@@ -1,4 +1,4 @@
-package com.fourbytes.search.model;
+package com.fourbytees.search.model;
 
 public class ErrorResponse {
     private String error;

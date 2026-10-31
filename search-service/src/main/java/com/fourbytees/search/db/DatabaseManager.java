@@ -1,6 +1,6 @@
-package com.fourbytes.search.db;
+package com.fourbytees.search.db;
 
-import com.fourbytes.search.model.Book;
+import com.fourbytees.search.model.Book;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
