@@ -8,11 +8,20 @@ public class BookDownloaded {
     private String path;
     private String downloaded_at;
 
+    public BookDownloaded() {}
+
     public BookDownloaded(String event_id, int book_id, String path) {
         this.event_id = event_id;
         this.book_id = book_id;
         this.path = path;
         this.downloaded_at = Instant.now().toString();
+    }
+
+    public BookDownloaded(String event_id, int book_id, String path, String downloaded_at) {
+        this.event_id = event_id;
+        this.book_id = book_id;
+        this.path = path;
+        this.downloaded_at = downloaded_at;
     }
 
     public String getEvent_id() { return event_id; }
