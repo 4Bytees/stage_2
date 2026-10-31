@@ -131,12 +131,13 @@ public class DatabaseManager {
                         if (totalMatches == 0) {
                             totalMatches = rs.getInt("total_matches");
                         }
+                        Integer year = rs.getObject("year") != null ? rs.getInt("year") : null;
                         books.add(new Book(
                                 rs.getInt("book_id"),
                                 rs.getString("title"),
                                 rs.getString("author"),
                                 rs.getString("language"),
-                                rs.getInt("year")
+                                year
                         ));
                     }
                 }
@@ -156,12 +157,13 @@ public class DatabaseManager {
                 pstmt.setInt(1, bookId);
                 try (ResultSet rs = pstmt.executeQuery()) {
                     if (rs.next()) {
+                        Integer year = rs.getObject("year") != null ? rs.getInt("year") : null;
                         return new Book(
                                 rs.getInt("book_id"),
                                 rs.getString("title"),
                                 rs.getString("author"),
                                 rs.getString("language"),
-                                rs.getInt("year")
+                                year
                         );
                     }
                 }

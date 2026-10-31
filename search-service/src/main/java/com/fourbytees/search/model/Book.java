@@ -5,11 +5,11 @@ public class Book {
     private String title;
     private String author;
     private String language;
-    private int year;
+    private Integer year;
 
     public Book() {}
 
-    public Book(int book_id, String title, String author, String language, int year) {
+    public Book(int book_id, String title, String author, String language, Integer year) {
         this.book_id = book_id;
         this.title = title;
         this.author = author;
@@ -29,6 +29,6 @@ public class Book {
     public String getLanguage() { return language; }
     public void setLanguage(String language) { this.language = language; }
 
-    public int getYear() { return year; }
-    public void setYear(int year) { this.year = year; }
+    public Integer getYear() { return year; }
+    public void setYear(Integer year) { this.year = year; }
 }
