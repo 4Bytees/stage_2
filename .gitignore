@@ -5,6 +5,7 @@ target/
 *.war
 *.ear
 dependency-reduced-pom.xml
+**/dependency-reduced-pom.xml
 
 # Executables & Binaries
 *.exe
