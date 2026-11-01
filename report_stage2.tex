@@ -53,35 +53,37 @@
 \fancyhead[R]{\small\textbf{Group 4Bytees}}
 \fancyfoot[C]{\thepage}
 \setlength{\headheight}{14pt}
+\emergencystretch=3em
 
 \begin{document}
 
 % ==============================================================================
 % 1. COVER PAGE
 % ==============================================================================
+\pagenumbering{gobble}
 \begin{titlepage}
     \centering
-    \vspace*{1.2cm}
+    \vspace*{0.6cm}
     {\Large\textsc{Universidad de Las Palmas de Gran Canaria (ULPGC)}\par}
-    \vspace{0.3cm}
+    \vspace{0.25cm}
     {\large\textsc{Escuela de Ingenier\'ia Inform\'atica}\par}
     \vspace{0.2cm}
     {\large Grado en Ciencia e Ingenier\'ia de Datos --- Big Data\par}
-    \vspace{1.6cm}
-    \rule{\linewidth}{0.6mm}\\[0.4cm]
+    \vspace{1.1cm}
+    \rule{\linewidth}{0.6mm}\\[0.35cm]
     {\Huge\bfseries\color{ulpgcblue} Stage 2: Building a Service-Oriented Architecture\par}
-    \vspace{0.3cm}
+    \vspace{0.25cm}
     {\Large\bfseries Distributed Coordination, Asynchronous Messaging, and Fault-Tolerant Full-Text Search over Project Gutenberg\par}
-    \rule{\linewidth}{0.6mm}\\[1.5cm]
+    \rule{\linewidth}{0.6mm}\\[1.1cm]
 
     \begin{minipage}{0.88\textwidth}
         \centering
-        \renewcommand{\arraystretch}{1.45}
+        \renewcommand{\arraystretch}{1.35}
         \begin{tabular}{rl}
             \textbf{Project Group:} & \textbf{4Bytees} \\
             \textbf{Course:} & Big Data (Academic Year 2025--2026) \\
             \textbf{Architecture Stage:} & Stage 2 --- Single-Host Service-Oriented Architecture (SOA) \\
-            \textbf{Repository URL:} & \href{https://github.com/4Bytees/stage_2}{\texttt{https://github.com/4Bytees/stage_2}} \\
+            \textbf{Repository URL:} & \href{https://github.com/4Bytees/stage_2}{\texttt{https://github.com/4Bytees/stage\_2}} \\
             \textbf{Working Branch:} & \texttt{feat/coordination-benchmarks} \\
             \textbf{Runtime Stack:} & Java 17, Javalin 6.1.3, ActiveMQ 5.18.3, Hazelcast 5.3.6, SQLite WAL, Nginx \\
             \textbf{Date:} & November 2026
@@ -93,8 +95,9 @@
         \footnotesize
         \textbf{Abstract.} This technical report presents the design, implementation, failure-recovery hardening, and experimental evaluation of the Stage 2 Service-Oriented Architecture (SOA) developed by Group \textbf{4Bytees} for the Project Gutenberg Search Engine. The monolithic Stage 1 pipeline is decomposed into three containerized microservices---\texttt{ingestion-service}, \texttt{indexing-service}, and \texttt{search-service}---coordinated on a single host via Apache ActiveMQ Classic 5.18.3, Hazelcast 5.3.6 CP/AP primitives, and a shared SQLite Write-Ahead Logging (WAL) datamart fronted by an Nginx reverse proxy. We detail our solutions to four critical distributed consistency challenges: (i) zero-downtime atomic index rebuilding via temporary SQLite file swapping, (ii) strict HTTP error sanitization preventing internal schema leakage, (iii) post-commit Hazelcast outbox retry decoupling index durability from downstream topic notifications, and (iv) exponential JMS redelivery backoff eliminating claim-contention busy loops. All claims are backed by a 41-test automated unit/integration suite, 9/9 live End-to-End API checks over a 25-book multilingual corpus, JMH 1.37 microbenchmarks, and live HTTP load benchmarks measured on an Intel Core Ultra 9 285H (64 GB RAM) host.
     \end{minipage}
-    \vspace{0.8cm}
+    \vspace{0.3cm}
 \end{titlepage}
+\pagenumbering{arabic}
 
 \tableofcontents
 \newpage
@@ -194,16 +197,17 @@ Table~\ref{tab:services} summarizes the six runtime services defined in \texttt{
 \caption{Stage 2 container services, ports, scaling model, and resource limits.}
 \label{tab:services}
 \footnotesize
-\renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{l l c c c X}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{l l c c c >{\raggedright\arraybackslash}X}
 \toprule
-\textbf{Service} & \textbf{Image / Runtime} & \textbf{Host Port} & \textbf{Internal Port} & \textbf{Limits (CPU / RAM)} & \textbf{Architectural Role} \\
+\textbf{Service} & \textbf{Image / Runtime} & \textbf{Host} & \textbf{Internal} & \textbf{Limits} & \textbf{Architectural Role} \\
 \midrule
 \texttt{nginx} & \texttt{nginx:1.27-alpine} & \texttt{7000} & \texttt{80} & \texttt{0.50} / \texttt{128M} & Public HTTP reverse proxy load-balancing \texttt{search-service} replicas. \\
 \texttt{search} & OpenJDK 17 JRE Jammy & None & \texttt{7000} & \texttt{1.00} / \texttt{768M} & Stateless read-only full-text search and metadata lookup (\texttt{SEARCH\_REPLICAS=2}). \\
 \texttt{ingestion} & OpenJDK 17 JRE Jammy & \texttt{7001} & \texttt{7001} & \texttt{1.00} / \texttt{768M} & Synchronous Gutenberg acquisition, datalake storage, and \texttt{BookDownloaded} publisher. \\
 \texttt{indexing} & OpenJDK 17 JRE Jammy & None & \texttt{7002} & \texttt{2.00} / \texttt{1024M} & Asynchronous JMS consumer, tokenizer, and coordinated SQLite writer (\texttt{INDEXING\_REPLICAS=1..N}). \\
-\texttt{activemq} & \texttt{symptoma/activemq:5.18.3} & \texttt{61616}, \texttt{8161} & \texttt{61616}, \texttt{8161} & \texttt{1.00} / \texttt{512M} & Persistent OpenWire JMS broker (\texttt{books.downloaded} and \texttt{books.dlq}). \\
+\texttt{activemq} & \texttt{symptoma/activemq:5.18.3} & \texttt{61616, 8161} & \texttt{61616, 8161} & \texttt{1.00} / \texttt{512M} & Persistent OpenWire JMS broker (\texttt{books.downloaded} and \texttt{books.dlq}). \\
 \texttt{hazelcast} & \texttt{hazelcast/hazelcast:5.3.6} & \texttt{5701} & \texttt{5701} & \texttt{1.00} / \texttt{512M} & Distributed coordination cluster (CP locks, atomic version counter, claim/outbox maps, topic). \\
 \bottomrule
 \end{tabularx}
@@ -245,10 +249,11 @@ All HTTP and non-HTTP operational interfaces are formally specified in \texttt{d
 \caption{Complete catalog of HTTP endpoints categorized by architectural layer.}
 \label{tab:http_contracts}
 \footnotesize
-\renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{l l l c X}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{l l l c >{\raggedright\arraybackslash}X}
 \toprule
-\textbf{Category} & \textbf{Service (Port)} & \textbf{Method \& Path} & \textbf{Status Codes} & \textbf{Contract Semantics} \\
+\textbf{Category} & \textbf{Service (Port)} & \textbf{Method \& Path} & \textbf{Codes} & \textbf{Contract Semantics} \\
 \midrule
 \multirow{3}{*}{\textbf{Front-End}}
  & Nginx $\to$ Search (\texttt{:7000}) & \texttt{GET /search} & \texttt{200, 400, 500} & Single-term full-text search (\texttt{q}) with optional \texttt{author}, \texttt{language}, \texttt{year}, \texttt{offset}, \texttt{limit} ($1..100$). Ranked by \texttt{freq DESC, book\_id ASC}. \\
@@ -256,10 +261,10 @@ All HTTP and non-HTTP operational interfaces are formally specified in \texttt{d
  & Nginx $\to$ Search (\texttt{:7000}) & \texttt{GET /search/filters} & \texttt{200, 500} & Returns distinct non-null \texttt{languages} and \texttt{years} currently indexed in SQLite. \\
 \midrule
 \multirow{2}{*}{\textbf{Internal}}
- & Ingestion (\texttt{:7001}) & \texttt{POST /ingest/\{book\_id\}} & \texttt{200, 400, 404, 500} & Downloads book synchronously into \texttt{./datalake} (\texttt{downloaded} or \texttt{already\_downloaded}) and publishes \texttt{BookDownloaded}. \\
+ & Ingestion (\texttt{:7001}) & \texttt{POST /ingest/\{id\}} & \texttt{200, 400, 404, 500} & Downloads book synchronously into \texttt{./datalake} (\texttt{downloaded} or \texttt{already\_downloaded}) and publishes \texttt{BookDownloaded}. \\
  & Indexing (\texttt{:7002}) & \texttt{POST /index/update/\{id\}} & \texttt{200, 400, 500} & Synchronously re-parses and re-indexes book \texttt{id} from the datalake under \texttt{FencedLock("index-writer")}. \\
 \midrule
-\multirow{6}{*}{\textbf{Operational}}
+\multirow{7}{*}{\textbf{Operational}}
  & Search (\texttt{:7000}) & \texttt{GET /status} & \texttt{200, 503} & Executes \texttt{SELECT 1} on read-only SQLite connection; returns \texttt{503} if database is unreachable. \\
  & Ingestion (\texttt{:7001}) & \texttt{GET /ingest/status/\{id\}} & \texttt{200, 400} & Checks \texttt{<id>.done} marker presence (\texttt{downloaded} vs. \texttt{not\_found}). \\
  & Ingestion (\texttt{:7001}) & \texttt{GET /ingest/list} & \texttt{200, 500} & Returns sorted list and \texttt{count} of all book IDs with a \texttt{.done} marker. \\
@@ -279,8 +284,9 @@ Table~\ref{tab:non_http_contracts} documents the seven non-HTTP coordination art
 \caption{Non-HTTP asynchronous messaging and distributed coordination contracts.}
 \label{tab:non_http_contracts}
 \footnotesize
-\renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{l l l X}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{l l l >{\raggedright\arraybackslash}X}
 \toprule
 \textbf{Middleware} & \textbf{Artifact Name} & \textbf{Type} & \textbf{Protocol \& Consistency Contract} \\
 \midrule
@@ -309,8 +315,8 @@ All contracts were verified against the live Docker Compose stack using \texttt{
         \item \texttt{GET /search?q=the} (stop word) $\to$ \texttt{200 OK} (\texttt{total=0}, \texttt{results=[]}).
         \item \texttt{GET /search} (missing \texttt{q}) and \texttt{GET /search?q=adventure\&limit=-1} $\to$ \texttt{400 Bad Request}.
     \end{itemize}
-    \item \textbf{Live Concurrent \texttt{POST /index/rebuild} Isolation Test:} While a full rebuild was running inside \texttt{stage\_2-indexing-1} (building \texttt{metadata.db.rebuild-8d180740-6c98-49d0-9163-78ac875757ef.tmp}, $23,625,728\text{ bytes}$), a second concurrent \texttt{POST /index/rebuild} request immediately returned \texttt{HTTP 409 Conflict} (\texttt{\{"error":"An index rebuild is already in progress"\}}). Simultaneously, client queries to \texttt{GET http://localhost:7000/search?q=adventure\&limit=2} returned \texttt{HTTP 200 OK} with \texttt{total=13} throughout the entire $455.30\text{ s}$ rebuild window, confirming zero partial-state exposure.
-    \item \textbf{Live Outbox Crash-Recovery Test:} Deleting \texttt{datalake/20261101/20/1342.published} while preserving \texttt{1342.done} and restarting \texttt{stage\_2-ingestion-1} triggered \texttt{OutboxScanner} at startup: \texttt{[OUTBOX] Scanning datalake at startup. Books with a .done marker: 25} $\to$ \texttt{[OUTBOX] Book 1342 republished to books.downloaded} (\texttt{event\_id: 29118d4d-e4a2-44a0-8742-7d7a21f423b6}). \texttt{indexing-service} processed the redelivered event idempotently (\texttt{Published version: 27}) while preserving \texttt{books\_indexed: 25}.
+    \item \textbf{Live Concurrent \texttt{POST /index/rebuild} Isolation Test:} While a full rebuild was running inside \texttt{stage\_2-indexing-1} (building \texttt{metadata.db.rebuild-\allowbreak 8d180740-6c98-49d0-9163-\allowbreak 78ac875757ef.tmp}, $23,625,728\text{ bytes}$), a second concurrent \texttt{POST /index/rebuild} request immediately returned \texttt{HTTP 409 Conflict} (\texttt{\{"error":"An index rebuild is already in progress"\}}). Simultaneously, client queries to \texttt{GET http://localhost:7000/\allowbreak search?q=adventure\&limit=2} returned \texttt{HTTP 200 OK} with \texttt{total=13} throughout the entire $455.30\text{ s}$ rebuild window, confirming zero partial-state exposure.
+    \item \textbf{Live Outbox Crash-Recovery Test:} Deleting \texttt{datalake/20261101/20/\allowbreak 1342.published} while preserving \texttt{1342.done} and restarting \texttt{stage\_2-ingestion-1} triggered \texttt{OutboxScanner} at startup: \texttt{[OUTBOX] Scanning datalake at startup. Books with a .done marker: 25} $\to$ \texttt{[OUTBOX] Book 1342 republished to\allowbreak\ books.downloaded} (\texttt{event\_id: 29118d4d-\allowbreak e4a2-44a0-8742-\allowbreak 7d7a21f423b6}). \texttt{indexing-service} processed the redelivered event idempotently (\texttt{Published version: 27}) while preserving \texttt{books\_indexed: 25}.
     \item \textbf{Strict Error Sanitization (\texttt{HTTP 500} vs. \texttt{400} vs. \texttt{200}):} When SQLite throws an internal \texttt{SQLException} or \texttt{RuntimeException}, \texttt{ApiErrors.internalError(ctx)} logs the full stack trace server-side via SLF4J and returns strictly \texttt{\{"error":"Internal server error"\}} with status \texttt{500}, never exposing JDBC URLs, table names, or file paths to external clients.
 \end{enumerate}
 
@@ -336,7 +342,7 @@ The project is structured as a 4-module Maven reactor targeting Java 17: \texttt
     \item \textbf{Lock-Free Atomic Claim State Machine (\texttt{IndexingOrchestrator}):} Before parsing a book, a worker executes \texttt{claimBook(bookId, workerId)} against Hazelcast \texttt{IMap("book-index-claims")} using atomic \texttt{putIfAbsent} and conditional \texttt{replace(key, oldVal, newVal)} operations:
     \begin{itemize}[nosep]
         \item If the entry is \texttt{INDEXED|<ts>} and \texttt{<id>.published} exists on disk, the worker returns \texttt{ALREADY\_INDEXED} and acknowledges the JMS message idempotently.
-        \item If another worker holds an active claim \texttt{<otherOwner>|<ts>} younger than \texttt{INDEXING\_TIMEOUT\_MS} ($300,000\text{ ms}$), the worker returns \texttt{CLAIMED\_BY\_OTHER} (\texttt{IndexResult.RETRY\_LATER}).
+        \item If another worker holds an active claim \texttt{<otherOwner>|<ts>} younger than the configured timeout \texttt{INDEXING\_TIMEOUT\_MS} ($300,000\text{ ms}$), the worker returns \texttt{CLAIMED\_BY\_OTHER} (\texttt{IndexResult.RETRY\_LATER}).
         \item If the existing claim is older than \texttt{INDEXING\_TIMEOUT\_MS} (indicating a crashed worker), the current worker atomically takes over the lease (\texttt{STALE\_CLAIM\_TAKEN}).
     \end{itemize}
     \item \textbf{JMS Exponential Redelivery and Contention Throttling (\texttt{QueueConsumer}):} \texttt{ActiveMQConnectionFactory} is configured with an explicit \texttt{RedeliveryPolicy}:
@@ -350,7 +356,7 @@ policy.setMaximumRedeliveries(5);
 factory.setRedeliveryPolicy(policy);
 \end{lstlisting}
     When \texttt{orchestrator.processBook()} returns \texttt{RETRY\_LATER} due to transient claim contention, \texttt{QueueConsumer} pauses for \texttt{CLAIM\_CONTENTION\_DELAY\_MS} ($250\text{ ms}$) before calling \texttt{session.recover()}, preventing tight local redelivery loops while routing poison messages to \texttt{books.dlq} after 5 failed attempts.
-    \item \textbf{Post-Commit \texttt{BookIndexedPublisher} Outbox:} Once \texttt{SqliteRepository.saveBookAndTerms()} commits under \texttt{FencedLock("index-writer")}, \texttt{<id>.published} is written, and \texttt{book-state} transitions to \texttt{INDEXED}, the SQLite state is durable. To prevent a transient Hazelcast \texttt{ITopic("books.indexed")} glitch from throwing an exception and triggering a duplicate JMS redelivery, \texttt{BookIndexedPublisher} stores the \texttt{BookIndexed} event in \texttt{IMap("book-indexed-outbox")}, attempts up to 3 immediate publications ($50\text{ ms}$ backoff), and runs a background daemon (\texttt{retryPendingEvents} every $5\text{ s}$) until all pending events are delivered and removed from the outbox.
+    \item \textbf{Post-Commit \texttt{BookIndexedPublisher} Outbox:} Once \texttt{SqliteRepository.\allowbreak saveBookAndTerms()} commits under \texttt{FencedLock("index-writer")}, \texttt{<id>.published} is written, and \texttt{book-state} transitions to \texttt{INDEXED}, the SQLite state is durable. To prevent a transient Hazelcast \texttt{ITopic("books.indexed")} glitch from throwing an exception and triggering a duplicate JMS redelivery, \texttt{BookIndexedPublisher} stores the \texttt{BookIndexed} event in \texttt{IMap("book-indexed-outbox")}, attempts up to 3 immediate publications ($50\text{ ms}$ backoff), and runs a background daemon (\texttt{retryPendingEvents} every $5\text{ s}$) until all pending events are delivered and removed from the outbox.
     \item \textbf{Zero-Downtime Atomic Index Rebuild (\texttt{IndexRebuilder}):} Rather than truncating \texttt{metadata.db} in place (which would expose empty search results for minutes and risk leaving an empty database on mid-rebuild failure), \texttt{IndexRebuilder} employs a two-phase temporary database strategy:
 \begin{lstlisting}[language=Java,caption={Two-phase atomic rebuild in \texttt{IndexRebuilder.java} and \texttt{SqliteRepository.java}.}]
 if (!rebuildLock.tryLock(0, TimeUnit.MILLISECONDS)) {
@@ -428,7 +434,8 @@ Both JMH suites (\texttt{org.openjdk.jmh 1.37}) were executed with \texttt{Mode.
 \label{tab:jmh}
 \footnotesize
 \renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{l l r r r r r}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l l r r r r r}
 \toprule
 \textbf{Module} & \textbf{Benchmark Operation} & \textbf{Mean ($\mu$s/op)} & \textbf{99.9\% CI ($\pm\,\mu$s)} & \textbf{StdDev ($\mu$s)} & \textbf{Min ($\mu$s)} & \textbf{Max ($\mu$s)} \\
 \midrule
@@ -442,7 +449,8 @@ Both JMH suites (\texttt{org.openjdk.jmh 1.37}) were executed with \texttt{Mode.
 \texttt{search} & \texttt{sqliteSearchFiltered} & $4,525.42$ & $1,460.29$ & $965.89$ & $3,388.45$ & $6,464.51$ \\
 \texttt{search} & \texttt{httpSearchClientQuery} & $8,621.27$ & $2,085.44$ & $1,379.39$ & $6,887.58$ & $11,012.82$ \\
 \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
 
 \begin{figure}[H]
@@ -450,7 +458,7 @@ Both JMH suites (\texttt{org.openjdk.jmh 1.37}) were executed with \texttt{Mode.
 \begin{tikzpicture}
 \begin{axis}[
     xbar,
-    width=0.88\textwidth,
+    width=0.80\textwidth,
     height=6.8cm,
     xlabel={Mean Execution Time ($\mu\text{s/op}$, logarithmic scale)},
     xmode=log,
@@ -499,7 +507,7 @@ Both JMH suites (\texttt{org.openjdk.jmh 1.37}) were executed with \texttt{Mode.
     \item \textbf{DAO vs. HTTP Layer in Search:} Direct read-only SQLite search queries execute in $4.27\text{ ms}$ (unfiltered) and $4.53\text{ ms}$ (filtered by author/language/year), demonstrating that composite B-tree index scans add only $250.56\,\mu\text{s}$ ($+5.9\%$) for metadata filtering. Adding the full Javalin/Jetty HTTP request/response cycle and Gson JSON serialization increases single-client latency to $8.62\text{ ms}$.
 \end{itemize}
 
-\subsection{Live HTTP Search Concurrency Benchmarks ($c \in \{1, 4, 8, 16, 32\}$)}
+\subsection{Live HTTP Search Concurrency Benchmarks (\texorpdfstring{$c \in \{1, 4, 8, 16, 32\}$}{c = 1, 4, 8, 16, 32})}
 We evaluated live HTTP search scalability against the Nginx gateway (\texttt{http://localhost:7000}) balancing \textbf{2 \texttt{search-service} replicas} across client concurrency levels $c \in \{1, 4, 8, 16, 32\}$ ($25 \times c$ requests per level cycling through 8 representative queries: \texttt{q=adventure}, \texttt{author=twain}, \texttt{language=en}, \texttt{language=es}, \texttt{language=fr}, pagination \texttt{limit=5\&offset=0}, stop word \texttt{q=the}, and \texttt{/books/1342}). Table~\ref{tab:http_concurrency} and Figure~\ref{fig:http_concurrency_chart} summarize the results.
 
 \begin{table}[H]
@@ -508,7 +516,8 @@ We evaluated live HTTP search scalability against the Nginx gateway (\texttt{htt
 \label{tab:http_concurrency}
 \footnotesize
 \renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{c r r r r r r r r r r}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c r r r r r r r r r r}
 \toprule
 \textbf{$c$} & \textbf{Requests} & \textbf{OK} & \textbf{Errors} & \textbf{Wall (ms)} & \textbf{Throughput (req/s)} & \textbf{Mean (ms)} & \textbf{StdDev (ms)} & \textbf{p50 (ms)} & \textbf{p95 (ms)} & \textbf{p99 (ms)} \\
 \midrule
@@ -518,7 +527,8 @@ $8$  & $200$ & $200$ & $0$ & $517.95$   & $386.14$ & $18.09$ & $12.04$ & $15.94$
 $16$ & $400$ & $400$ & $0$ & $978.54$   & $408.77$ & $32.22$ & $24.35$ & $25.57$ & $84.79$  & $99.44$ \\
 $32$ & $800$ & $800$ & $0$ & $1,730.31$ & $462.35$ & $56.87$ & $46.00$ & $43.85$ & $155.37$ & $182.72$ \\
 \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
 
 \begin{figure}[H]
@@ -600,7 +610,8 @@ Table~\ref{tab:indexing_latency} and Figure~\ref{fig:indexing_chart} report the 
 \label{tab:indexing_latency}
 \footnotesize
 \renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{c l l r r r}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{c l l r r r}
 \toprule
 \textbf{Book ID} & \textbf{Title} & \textbf{Corpus Category} & \textbf{Body Size (KB)} & \textbf{Latency (ms)} & \textbf{Latency (s)} \\
 \midrule
@@ -612,7 +623,8 @@ Table~\ref{tab:indexing_latency} and Figure~\ref{fig:indexing_chart} report the 
 \midrule
 \multicolumn{3}{l}{\textbf{Full 25-Book Atomic Rebuild (\texttt{POST /index/rebuild})}} & \textbf{22.56 MB DB} & \textbf{455,300.00} & \textbf{455.300} \\
 \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
 
 \begin{figure}[H]
@@ -669,7 +681,8 @@ Table~\ref{tab:docker_stats} presents the live resource consumption captured via
 \label{tab:docker_stats}
 \footnotesize
 \renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{l r r r r r}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l r r r r r}
 \toprule
 \textbf{Container Name} & \textbf{CPU (\%)} & \textbf{Memory Usage / Limit} & \textbf{Mem (\%)} & \textbf{Network I/O} & \textbf{Block I/O} \\
 \midrule
@@ -682,7 +695,8 @@ Table~\ref{tab:docker_stats} presents the live resource consumption captured via
 \texttt{stage\_2-activemq-1}  & $0.24\%$ & $178.4\text{ MiB} / 512\text{ MiB}$ & $34.85\%$ & $112\text{ kB} / 72\text{ kB}$    & $0\text{ B} / 901\text{ kB}$ \\
 \texttt{stage\_2-hazelcast-1} & $0.98\%$ & $182.3\text{ MiB} / 512\text{ MiB}$ & $35.60\%$ & $3.64\text{ MB} / 905\text{ kB}$  & $0\text{ B} / 918\text{ kB}$ \\
 \bottomrule
-\end{tabularx}
+\end{tabular}%
+}
 \end{table}
 
 % ==============================================================================
@@ -713,8 +727,9 @@ To evolve this SOA into a true multi-node distributed cluster in Stage 3, Table~
 \caption{Roadmap from Stage 2 single-host SOA to Stage 3 multi-node distributed cluster.}
 \label{tab:stage3}
 \footnotesize
-\renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{l l X}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{l l >{\raggedright\arraybackslash}X}
 \toprule
 \textbf{\#} & \textbf{Subsystem} & \textbf{Stage 3 Multi-Node Cluster Transformation} \\
 \midrule
