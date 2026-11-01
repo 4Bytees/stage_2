@@ -10,10 +10,10 @@ RUN mvn -pl search-service -am clean package -DskipTests
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
-# Usuario no root
+# Non-root user
 RUN groupadd -r appgroup && useradd -r -g appgroup -d /app -s /sbin/nologin appuser
 
-# Directorios compartidos para volúmenes con permisos
+# Shared volume directories with permissions
 RUN mkdir -p /data/datalake /data/datamarts && chown -R appuser:appgroup /data /app
 
 COPY --from=build --chown=appuser:appgroup /app/search-service/target/search-service-1.0.0.jar app.jar
