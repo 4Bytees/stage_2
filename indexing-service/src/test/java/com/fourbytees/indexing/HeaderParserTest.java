@@ -42,11 +42,11 @@ public class HeaderParserTest {
 
         assertEquals(731, meta.bookId());
         assertEquals("The History of the Decline and Fall of the Roman Empire, Vol. 1", meta.title(),
-                "Debe soportar líneas de continuación indentadas en Title");
+                "Must support indented continuation lines in Title");
         assertEquals("Edward Gibbon Edited by J.B. Bury", meta.author(),
-                "Debe soportar líneas de continuación indentadas en Author");
-        assertEquals("en", meta.language(), "Debe mapear English -> en");
-        assertEquals(1997, meta.year(), "Debe extraer el año 1997 de Release date");
+                "Must support indented continuation lines in Author");
+        assertEquals("en", meta.language(), "Must map English -> en");
+        assertEquals(1997, meta.year(), "Must extract year 1997 from Release date");
     }
 
     @Test
@@ -66,8 +66,8 @@ public class HeaderParserTest {
         assertEquals(2000, meta.bookId());
         assertEquals("Don Quijote de la Mancha", meta.title());
         assertEquals("Miguel de Cervantes Saavedra", meta.author());
-        assertEquals("es", meta.language(), "Debe mapear Spanish -> es");
-        assertEquals(1999, meta.year(), "Debe extraer el año 1999 de Posting date");
+        assertEquals("es", meta.language(), "Must map Spanish -> es");
+        assertEquals(1999, meta.year(), "Must extract year 1999 from Posting date");
     }
 
     @Test
@@ -87,8 +87,8 @@ public class HeaderParserTest {
         assertEquals(9999, meta.bookId());
         assertEquals("Ancient Fragment", meta.title());
         assertEquals("Anonymous", meta.author());
-        assertEquals("fr", meta.language(), "Debe mapear French -> fr");
-        assertNull(meta.year(), "Si no hay Release date el año debe ser null");
+        assertEquals("fr", meta.language(), "Must map French -> fr");
+        assertNull(meta.year(), "Year must be null when Release date is absent");
     }
 
     @Test
@@ -106,7 +106,7 @@ public class HeaderParserTest {
         BookMetadata meta = HeaderParser.parse(8888, headerFile);
 
         assertEquals(8888, meta.bookId());
-        assertNull(meta.language(), "Idioma no soportado debe resultar en null");
+        assertNull(meta.language(), "Unsupported language must yield null");
         assertEquals(2010, meta.year());
     }
 
@@ -125,7 +125,7 @@ public class HeaderParserTest {
         BookMetadata meta = HeaderParser.parse(3333, headerFile);
 
         assertEquals(3333, meta.bookId());
-        assertEquals("fr", meta.language(), "Debe extraer el primer idioma (French -> fr) cuando hay varios");
+        assertEquals("fr", meta.language(), "Must extract the primary language (French -> fr) when multiple are listed");
     }
 
     @Test
@@ -144,8 +144,7 @@ public class HeaderParserTest {
 
             assertTrue(rs.next());
             rs.getInt("year");
-            assertTrue(rs.wasNull(), "La columna year en la base de datos debe ser NULL y no 0");
+            assertTrue(rs.wasNull(), "The year column in the database must be NULL rather than 0");
         }
     }
 }
-

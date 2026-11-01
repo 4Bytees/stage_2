@@ -55,7 +55,7 @@ public class SqliteRepository {
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_postings_term ON postings(term);");
 
         } catch (SQLException e) {
-            throw new RuntimeException("Error inicializando esquema SQLite", e);
+            throw new RuntimeException("Failed to initialize SQLite schema", e);
         }
     }
 

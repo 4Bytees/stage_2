@@ -43,7 +43,7 @@
             <groupId>org.apache.activemq</groupId>
             <artifactId>activemq-client</artifactId>
         </dependency>
-        <!-- Broker embebido exclusivo para tests -->
+        <!-- Embedded broker used exclusively for tests -->
         <dependency>
             <groupId>org.apache.activemq</groupId>
             <artifactId>activemq-broker</artifactId>

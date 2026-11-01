@@ -61,7 +61,7 @@ public class HeaderParser {
                 boolean isIndented = rawLine.startsWith(" ") || rawLine.startsWith("\t");
                 String line = rawLine.trim();
 
-                // 1. Líneas de continuación con sangría para Title y Author:
+                // 1. Indented continuation lines for Title and Author:
                 if (isIndented && activeField == ActiveField.TITLE) {
                     title.append(" ").append(line);
                     continue;
@@ -70,7 +70,7 @@ public class HeaderParser {
                     continue;
                 }
 
-                // 2. Coincidencias de cabeceras principales:
+                // 2. Primary header field matches:
                 Matcher mTitle = TITLE_PATTERN.matcher(line);
                 if (mTitle.matches()) {
                     title = new StringBuilder(mTitle.group(1).trim());
@@ -89,7 +89,7 @@ public class HeaderParser {
                 if (mLang.matches()) {
                     activeField = ActiveField.OTHER;
                     String rawLang = mLang.group(1).trim().toLowerCase();
-                    // Si contiene varios idiomas separados por coma o punto y coma, tomar el principal
+                    // If multiple languages are listed separated by comma or semicolon, take the primary one.
                     String primaryLang = rawLang.split("[,;]")[0].trim();
                     language = mapLanguageToIso(primaryLang, bookId);
                     continue;
@@ -105,7 +105,7 @@ public class HeaderParser {
                     continue;
                 }
 
-                // Cualquier otra cabecera resetea el campo activo
+                // Any other non-indented header resets the active field.
                 if (!isIndented) {
                     activeField = ActiveField.OTHER;
                 }
@@ -123,9 +123,9 @@ public class HeaderParser {
             return LANGUAGE_MAP.get(rawLang);
         }
         if (LANGUAGE_MAP.containsValue(rawLang)) {
-            return rawLang; // Ya viene como código ISO soportado
+            return rawLang; // Already provided as a supported ISO code.
         }
-        log.warn("Libro ID {}: Idioma no reconocido o no soportado '{}', asignando null.", bookId, rawLang);
+        log.warn("Book ID {}: Unrecognized or unsupported language '{}', assigning null.", bookId, rawLang);
         return null;
     }
 }

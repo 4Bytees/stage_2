@@ -90,21 +90,21 @@ public class IndexingServiceTest {
         IndexingOrchestrator orchestrator = new IndexingOrchestrator(config, repository, hazelcastMember, jmsConnection);
 
         boolean firstRun = orchestrator.indexBook(bookId, true);
-        assertTrue(firstRun, "La primera indexación debe ser exitosa");
+        assertTrue(firstRun, "First indexing run must succeed");
 
         boolean secondRun = orchestrator.indexBook(bookId, true);
-        assertTrue(secondRun, "La segunda indexación (idempotente) debe ser exitosa");
+        assertTrue(secondRun, "Second idempotent indexing run must succeed");
 
         try (java.sql.Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
              Statement stmt = conn.createStatement()) {
 
             ResultSet rsBooks = stmt.executeQuery("SELECT COUNT(*) FROM books WHERE book_id = " + bookId);
             assertTrue(rsBooks.next());
-            assertEquals(1, rsBooks.getInt(1), "El libro debe aparecer exactamente 1 vez en books");
+            assertEquals(1, rsBooks.getInt(1), "The book must appear exactly once in the books table");
 
             ResultSet rsPostings = stmt.executeQuery("SELECT freq FROM postings WHERE term = 'island' AND book_id = " + bookId);
             assertTrue(rsPostings.next());
-            assertEquals(2, rsPostings.getInt(1), "La frecuencia del término debe ser 2 sin duplicados");
+            assertEquals(2, rsPostings.getInt(1), "Term frequency must be 2 without duplicate postings");
         }
     }
 
@@ -152,8 +152,8 @@ public class IndexingServiceTest {
         executor.shutdown();
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
 
-        assertEquals(1, successCount.get(), "Solo una réplica debe haber procesado el libro");
-        assertEquals(1, rejectedCount.get(), "La segunda réplica debe haber sido rechazada por el replace");
+        assertEquals(1, successCount.get(), "Only one replica must have processed the book");
+        assertEquals(1, rejectedCount.get(), "The second replica must have been rejected by the claim");
         assertEquals(SystemConstants.STATE_INDEXED, bookState.get(bookId));
     }
     @Test

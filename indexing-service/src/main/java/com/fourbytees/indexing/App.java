@@ -24,24 +24,24 @@ public class App {
         IndexingConfig config = new IndexingConfig();
         SqliteRepository repository = new SqliteRepository(config.sqliteDbPath);
 
-        log.info("Conectando con Hazelcast en {} (cluster: {})...", config.hazelcastAddress, config.hazelcastClusterName);
+        log.info("Connecting to Hazelcast at {} (cluster: {})...", config.hazelcastAddress, config.hazelcastClusterName);
         HazelcastInstance hazelcast;
         try {
             hazelcast = HazelcastClientFactory.create(config.hazelcastAddress, config.hazelcastClusterName);
-            log.info("Indexing Service conectado exitosamente a Hazelcast.");
+            log.info("Indexing Service connected to Hazelcast.");
         } catch (Exception e) {
-            log.error("Fallo crítico conectando con Hazelcast tras timeout de 60s", e);
-            throw new RuntimeException("Fallo crítico conectando a Hazelcast en " + config.hazelcastAddress, e);
+            log.error("Critical failure connecting to Hazelcast after 60s timeout", e);
+            throw new RuntimeException("Critical failure connecting to Hazelcast at " + config.hazelcastAddress, e);
         }
 
-        log.info("Conectando con ActiveMQ en {}...", config.activeMqUrl);
+        log.info("Connecting to ActiveMQ at {}...", config.activeMqUrl);
         Connection jmsConn;
         try {
             jmsConn = JmsClientFactory.createConnection(config.activeMqUrl, config);
-            log.info("Indexing Service conectado exitosamente a ActiveMQ.");
+            log.info("Indexing Service connected to ActiveMQ.");
         } catch (Exception e) {
-            log.error("Fallo conectando a ActiveMQ en {}", config.activeMqUrl, e);
-            throw new RuntimeException("Fallo conectando a ActiveMQ en " + config.activeMqUrl, e);
+            log.error("Failed to connect to ActiveMQ at {}", config.activeMqUrl, e);
+            throw new RuntimeException("Failed to connect to ActiveMQ at " + config.activeMqUrl, e);
         }
 
         IndexingOrchestrator orchestrator = new IndexingOrchestrator(config, repository, hazelcast, jmsConn);
@@ -76,6 +76,6 @@ public class App {
         app.get("/index/status", controller::getStatus);
         app.get("/status", controller::getHealth);
 
-        log.info("Indexing Service iniciado exitosamente en el puerto {}", config.port);
+        log.info("Indexing Service started on port {}", config.port);
     }
 }

@@ -35,7 +35,7 @@ public class BookDownloadedConsumer implements Runnable {
             Destination queue = session.createQueue(SystemConstants.QUEUE_BOOKS_DOWNLOADED);
             MessageConsumer consumer = session.createConsumer(queue);
 
-            log.info("Consumidor JMS escuchando en {}", SystemConstants.QUEUE_BOOKS_DOWNLOADED);
+            log.info("JMS consumer listening on {}", SystemConstants.QUEUE_BOOKS_DOWNLOADED);
 
             while (!Thread.currentThread().isInterrupted()) {
                 Message message = consumer.receive();
@@ -44,7 +44,7 @@ public class BookDownloadedConsumer implements Runnable {
                 }
             }
         } catch (JMSException e) {
-            log.error("Excepción en consumidor JMS", e);
+            log.error("JMS consumer exception", e);
         }
     }
 
