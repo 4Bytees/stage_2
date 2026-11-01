@@ -84,24 +84,25 @@ public class BookDownloadedConsumer implements Runnable {
                             bookId
                     );
 
+                    pauseBeforeRedelivery();
                     session.recover();
                 }
             }
 
         } catch (Exception e) {
-            log.error("Error indexando libro ID: {}", bookId, e);
+            log.error("Failed to index book {}", bookId, e);
             handleFailure(session, message, bookId, e);
         }
     }
 
     private void handleFailure(Session session, Message message, int bookId, Exception ex) {
         try {
-            var retryMap = hazelcast.getMap("book-retries");
+            var retryMap = hazelcast.getMap(SystemConstants.MAP_BOOK_RETRIES);
             int attempts = (Integer) retryMap.getOrDefault(bookId, 0) + 1;
             retryMap.put(bookId, attempts);
 
             if (attempts >= config.maxRetries) {
-                log.warn("Libro {} superó reintentos ({}). Enviando a DLQ.", bookId, attempts);
+                log.warn("Book {} exceeded max retries ({}). Routing to DLQ.", bookId, attempts);
                 hazelcast.getMap(SystemConstants.MAP_BOOK_STATE).put(bookId, SystemConstants.STATE_FAILED);
 
                 Destination dlq = session.createQueue(SystemConstants.QUEUE_BOOKS_DLQ);
@@ -114,10 +115,22 @@ public class BookDownloadedConsumer implements Runnable {
                 message.acknowledge();
             } else {
                 hazelcast.getMap(SystemConstants.MAP_BOOK_STATE).put(bookId, SystemConstants.STATE_DOWNLOADED);
+                pauseBeforeRedelivery();
                 session.recover();
             }
         } catch (Exception jmsEx) {
-            log.error("Fallo gestionando DLQ para libro {}", bookId, jmsEx);
+            log.error("Failed to handle DLQ routing for book {}", bookId, jmsEx);
+        }
+    }
+
+    private void pauseBeforeRedelivery() {
+        if (config.retryLaterDelayMs <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(config.retryLaterDelayMs);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 }

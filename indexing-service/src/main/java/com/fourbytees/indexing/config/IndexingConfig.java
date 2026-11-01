@@ -18,6 +18,11 @@ public class IndexingConfig {
     public final long bookIndexedRetryDelayMs;
     public final long outboxFlushIntervalMs;
     public final long outboxMinAgeMs;
+    public final long retryLaterDelayMs;
+    public final long redeliveryInitialDelayMs;
+    public final double redeliveryBackoffMultiplier;
+    public final long redeliveryMaxDelayMs;
+    public final int redeliveryMaximumRedeliveries;
 
     public IndexingConfig() {
         this.port = Integer.parseInt(getPropOrEnv("PORT", "7002"));
@@ -34,6 +39,11 @@ public class IndexingConfig {
         this.bookIndexedRetryDelayMs = Long.parseLong(getPropOrEnv("BOOK_INDEXED_RETRY_DELAY_MS", "200"));
         this.outboxFlushIntervalMs = Long.parseLong(getPropOrEnv("OUTBOX_FLUSH_INTERVAL_MS", "10000"));
         this.outboxMinAgeMs = Long.parseLong(getPropOrEnv("OUTBOX_MIN_AGE_MS", "5000"));
+        this.retryLaterDelayMs = Long.parseLong(getPropOrEnv("RETRY_LATER_DELAY_MS", "500"));
+        this.redeliveryInitialDelayMs = Long.parseLong(getPropOrEnv("JMS_REDELIVERY_INITIAL_DELAY_MS", "500"));
+        this.redeliveryBackoffMultiplier = Double.parseDouble(getPropOrEnv("JMS_REDELIVERY_BACKOFF_MULTIPLIER", "2.0"));
+        this.redeliveryMaxDelayMs = Long.parseLong(getPropOrEnv("JMS_REDELIVERY_MAX_DELAY_MS", "10000"));
+        this.redeliveryMaximumRedeliveries = Integer.parseInt(getPropOrEnv("JMS_REDELIVERY_MAXIMUM_REDELIVERIES", "-1"));
     }
 
     private static String getPropOrEnv(String key, String defaultValue) {
