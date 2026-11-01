@@ -2,39 +2,115 @@ openapi: 3.0.3
 info:
   title: Search Engine Service Architecture API
   description: |
-    API Specification for Stage 2 Service-Oriented Architecture (SOA) Search Engine.
-    
-    ### API Inventories Classification:
-    1. **Front-End-Facing APIs**: Public endpoints used by web or mobile clients to execute searches and retrieve book metadata.
-    2. **Internal Service APIs**: Private endpoints used internally between services and the coordination module.
-    3. **Operational / Administrative APIs**: Health checks, system status, and batch rebuild management.
+    API and Coordination Specification for the Stage 2 Service-Oriented Architecture (SOA) Search Engine (group 4Bytees).
+
+    ### 1. API Inventory Classification
+    1. **Front-End-Facing API**: Public read-only endpoints exposed by `search-service` (behind Nginx on host port `7000`) for end-user web/mobile clients (`GET /search`, `GET /books/{id}`, `GET /search/filters`).
+    2. **Internal Service API**: Private service-to-service and control-plane endpoints used by orchestration scripts and peer services (`POST /ingest/{book_id}`, `GET /ingest/status/{book_id}`, `GET /ingest/list`, `POST /index/update/{book_id}`).
+    3. **Operational / Administrative API**: Health checks, indexing metrics, and full batch index rebuild management (`GET /status`, `GET /index/status`, `POST /index/rebuild`).
+
+    ---
+
+    ### 2. Datalake Storage Contract (Filesystem Markers)
+    All services share the datalake root (`/data/datalake` in containers) partitioned by date and hour: `datalake/<YYYYMMDD>/<HH>/`.
+    - `<id>.header.txt`: Raw Project Gutenberg header metadata extracted during ingestion.
+    - `<id>.tmp` -> `<id>.body.txt`: Book body written to a temporary file first and moved atomically (`ATOMIC_MOVE`).
+    - `<id>.done`: Completion and integrity marker (`READY`). A book is considered downloaded and readable by `indexing-service` **if and only if** `<id>.done` exists.
+    - `<id>.published`: Outbox confirmation marker (`PUBLISHED`). Created only after `ingestion-service` has set `book-state` to `DOWNLOADED` in Hazelcast and sent the persistent `BookDownloaded` message to ActiveMQ. On startup or duplicate ingestion requests, any book with `.done` but without `.published` is republished by `OutboxService`.
+
+    ---
+
+    ### 3. Non-HTTP Coordination Contracts (Team Design Decision)
+    > **Note:** Using ActiveMQ Classic and Hazelcast is a design decision by group 4Bytees to decouple ingestion from indexing and coordinate multiple replicas safely; they are not mandatory requirements of the course assignment.
+
+    #### 3.1 ActiveMQ Classic 5.18.3 Queues & Event Schemas
+    - **`books.downloaded` (Queue)**
+      - **Producer:** `ingestion-service` (`OutboxService`, `DeliveryMode.PERSISTENT`).
+      - **Consumer:** `indexing-service` (`BookDownloadedConsumer`, `Session.CLIENT_ACKNOWLEDGE`).
+      - **Schema (`BookDownloaded`):**
+        ```json
+        {
+          "event_id": "550e8400-e29b-41d4-a716-446655440000",
+          "book_id": 1342,
+          "path": "/data/datalake/20261026/18/1342",
+          "downloaded_at": "2026-10-26T18:00:00Z"
+        }
+        ```
+      - **Delivery & Acknowledgement Semantics:** At-least-once delivery. The consumer acknowledges (`message.acknowledge()`) only when indexing returns `INDEXED` or `ALREADY_INDEXED`, or after routing a permanently failing book to `books.dlq`.
+      - **Redelivery & Backoff Policy:** On `RETRY_LATER` (book currently claimed by another active replica) or a recoverable exception below `MAX_RETRIES`, the consumer pauses (`RETRY_LATER_DELAY_MS`, default `500 ms`) and calls `session.recover()` without acknowledging. `JmsClientFactory` configures an ActiveMQ `RedeliveryPolicy` (`initialRedeliveryDelay=500 ms`, exponential `backOffMultiplier=2.0`, `maximumRedeliveryDelay=10000 ms`, `maximumRedeliveries=-1` so application-level `MAX_RETRIES` controls DLQ routing).
+    - **`books.indexed` (Queue)**
+      - **Producer:** `indexing-service` (`BookIndexedPublisher`).
+      - **Consumer:** Downstream cache invalidators, analytics, or monitoring consumers.
+      - **Schema (`BookIndexed`):**
+        ```json
+        {
+          "event_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+          "book_id": 1342,
+          "index_version": 42,
+          "indexed_at": "2026-10-26T18:00:02Z"
+        }
+        ```
+      - **Delivery Guarantee & Outbox Recovery:** At-least-once delivery. While holding `LOCK_INDEX_WRITER`, `indexing-service` records the serialized `BookIndexed` payload in Hazelcast map `book-indexed-outbox` before releasing the lock. After commit, `BookIndexedPublisher` attempts immediate publication up to `BOOK_INDEXED_PUBLISH_ATTEMPTS` (default `3`) with linear backoff (`BOOK_INDEXED_RETRY_DELAY_MS`, default `200 ms`). If the broker is unreachable, the entry remains in `book-indexed-outbox` and is delivered asynchronously by a background relay (`OUTBOX_FLUSH_INTERVAL_MS`, default `10000 ms`) **without ever repeating the SQLite index write**.
+      - **Duplicate & Ordering Assumptions:** Retries reuse the exact same `event_id` and `index_version`. Downstream consumers must be idempotent by deduplicating on `event_id` and comparing `index_version` (monotonic counter) because cross-book delivery order is not guaranteed.
+    - **`books.dlq` (Dead-Letter Queue)**
+      - **Producer:** `indexing-service` (`BookDownloadedConsumer` when `book-retries` reaches `MAX_RETRIES`, default `3`).
+      - **Consumer:** Operational inspection / manual replay tooling.
+      - **Schema:**
+        ```json
+        {
+          "book_id": 1342,
+          "error": "No directory with a .done marker was found for book 1342",
+          "attempts": 3
+        }
+        ```
+
+    #### 3.2 Hazelcast 5.3.6 Distributed Structures
+    - **`book-state` (`IMap<Integer, String>`)**: Tracks the lifecycle state of each `book_id`:
+      - `DOWNLOADED` -> `INDEXING` -> `INDEXED` (or `FAILED` after `MAX_RETRIES` consecutive failures).
+      - Transitions during JMS consumption are evaluated atomically under `bookState.lock(bookId)`.
+    - **`book-claims` (`IMap<Integer, BookClaim>`)**: Stores `{ claimantId: String, claimedAtMs: long }` for books in state `INDEXING`.
+      - **Claim Timeout & Takeover:** Controlled by `INDEXING_TIMEOUT_MS` (default `300000 ms`). If a replica crashes while `book-state` is `INDEXING`, another replica receiving redelivery sees `now - claimedAtMs >= INDEXING_TIMEOUT_MS`, takes over the expired claim, and completes indexing. If the claim is still recent, the consumer returns `RETRY_LATER`.
+      - **Cleanup:** Removed by the owning replica (`removeOwnClaim`) upon successful indexing or when releasing the claim on failure.
+    - **`book-retries` (`IMap<Integer, Integer>`)**: Counts consecutive indexing exceptions per `book_id`. Cleared when indexing succeeds (`INDEXED` or `ALREADY_INDEXED`).
+    - **`book-indexed-outbox` (`IMap<String, String>`)**: Keyed by `event_id`, stores JSON `BookIndexed` events committed to SQLite that are awaiting broker confirmation.
+    - **`index-writer` (`FencedLock` via CP Subsystem)**: Serializes SQLite writes (`saveBookIndex` and the final swap of `IndexRebuilder`), version increments, and `book-state` updates to `INDEXED`.
+    - **`lock:index-rebuild` (`FencedLock` via CP Subsystem)**: Ensures at most one `POST /index/rebuild` runs across all replicas; concurrent calls fail fast with `409 Conflict`.
+    - **`index-published-version` (`IAtomicLong` via CP Subsystem)**: Monotonically increasing version counter incremented once per indexed book and once per completed full rebuild. Read by `search-service` (`GET /status`).
   version: 1.0.0
 servers:
   - url: http://localhost:7000
-    description: Search Service Server
+    description: Search Service Server (via Nginx reverse proxy)
   - url: http://localhost:7001
     description: Ingestion Service Server
   - url: http://localhost:7002
-    description: Indexing Service Server
+    description: Indexing Service Server (internal port)
+
+tags:
+  - name: "Front-End-Facing API"
+    description: Public read-only endpoints consumed by web or mobile clients through Nginx on port 7000.
+  - name: "Internal Service API"
+    description: Private service-to-service and orchestration endpoints for ingestion and incremental indexing.
+  - name: "Operational / Administrative API"
+    description: Health checks, indexing statistics, and batch rebuild operations.
 
 paths:
   /search:
     get:
       tags:
         - "Front-End-Facing API"
-      summary: Search books by term with optional filters and pagination
+      summary: Search books by single term with optional metadata filters and pagination
       description: |
-        Provider: Search Service
-        Consumer: Front-End / Web Client
-        
-        Performs full-text keyword search ordered by TF-IDF score (descending) with tie-breaking by book_id.
-        Supports filtering by author (case-insensitive substring match), language (supported ISO codes), and publication year (4-digit integer).
-        Normalizes terms using Stage 1 tokenization regex (\b[a-z]{3,}\b) and stop words (returns empty 200 OK for stop words or non-valid terms).
+        - **Provider:** `search-service`
+        - **Intended Consumer:** Front-End / Web or Mobile Client (via Nginx)
+        - **Completion Semantics:** Synchronous. Reads committed snapshot state from the shared SQLite datamart in read-only mode (`SQLiteConfig.setReadOnly(true)`).
+        - **Single-Term Restriction & Tokenization Contract:** Accepts a query parameter `q` and extracts the **first** token matching the frozen Stage 1 regex `\b[a-z]{3,}\b` after lowercase normalization. If `q` contains no token of at least 3 ASCII letters or if the extracted token is in the frozen 30-word stop-word list, the endpoint returns `200 OK` with `total: 0` and `results: []` (distinct from `400 Bad Request`).
+        - **Ranking:** Ordered by term frequency `p.freq DESC` (equivalent to relative single-term TF-IDF score because `idf` is constant across matching documents for a single term) with deterministic tie-breaking by `b.book_id ASC`.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`). Callers may retry freely on `500` or network timeouts (recommended caller timeout: `5s`).
       parameters:
         - name: q
           in: query
           required: true
-          description: Search query keyword.
+          description: Search query keyword (mandatory, non-blank; evaluated using the first token matching `\b[a-z]{3,}\b`).
           schema:
             type: string
           example: "adventure"
@@ -44,7 +120,7 @@ paths:
           description: Case-insensitive author name substring filter.
           schema:
             type: string
-          example: "austen"
+          example: "twain"
         - name: language
           in: query
           required: false
@@ -56,12 +132,12 @@ paths:
         - name: year
           in: query
           required: false
-          description: 4-digit publication year filter (must be an integer between 1000 and 9999).
+          description: 4-digit Gutenberg release/posting year filter (integer between 1000 and 9999).
           schema:
             type: integer
             minimum: 1000
             maximum: 9999
-          example: 1813
+          example: 1885
         - name: offset
           in: query
           required: false
@@ -83,7 +159,7 @@ paths:
           example: 20
       responses:
         '200':
-          description: Search executed successfully.
+          description: Search executed successfully (includes valid queries with zero matches or stop words).
           content:
             application/json:
               schema:
@@ -105,9 +181,9 @@ paths:
                     title: "Pride and Prejudice"
                     author: "Jane Austen"
                     language: "en"
-                    year: 1813
+                    year: null
         '400':
-          description: Bad Request - Invalid query parameters (e.g. limit=-1, year=abc, unsupported language).
+          description: Bad Request - Missing or blank `q`, invalid integer format, out-of-range `offset`/`limit`/`year`, or unsupported `language`.
           content:
             application/json:
               schema:
@@ -122,10 +198,12 @@ paths:
     get:
       tags:
         - "Front-End-Facing API"
-      summary: Retrieve complete metadata for a specific book
+      summary: Retrieve metadata for a specific book by ID
       description: |
-        Provider: Search Service
-        Consumer: Front-End / Web Client
+        - **Provider:** `search-service`
+        - **Intended Consumer:** Front-End / Web or Mobile Client
+        - **Completion Semantics:** Synchronous read from the SQLite `books` table.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`). Callers may retry on `500` or network timeouts (recommended caller timeout: `5s`).
       parameters:
         - name: id
           in: path
@@ -136,7 +214,7 @@ paths:
           example: 1342
       responses:
         '200':
-          description: Book metadata found.
+          description: Book metadata found. Note that `language` and `year` may be `null` if absent from the Gutenberg header.
           content:
             application/json:
               schema:
@@ -147,8 +225,17 @@ paths:
                 author: "Jane Austen"
                 language: "en"
                 year: 1813
+        '400':
+          description: Invalid non-integer book ID parameter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Bad Request"
+                message: "Invalid book ID format."
         '404':
-          description: Book not found in metadata repository.
+          description: Book not found in the SQLite metadata repository.
           content:
             application/json:
               schema:
@@ -163,10 +250,12 @@ paths:
     get:
       tags:
         - "Front-End-Facing API"
-      summary: Get available search filter values
+      summary: List distinct available languages and years in the index
       description: |
-        Provider: Search Service
-        Consumer: Front-End / Web Client
+        - **Provider:** `search-service`
+        - **Intended Consumer:** Front-End / Web or Mobile Client
+        - **Completion Semantics:** Synchronous read returning sorted distinct non-null `language` and `year` values currently present in SQLite.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`).
       responses:
         '200':
           description: Available filter categories and distinct values.
@@ -174,6 +263,9 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - languages
+                  - years
                 properties:
                   languages:
                     type: array
@@ -193,37 +285,97 @@ paths:
     post:
       tags:
         - "Internal Service API"
-      summary: Trigger ingestion and splitting of a raw book
+      summary: Download, split, persist, and publish a Project Gutenberg book
       description: |
-        Provider: Ingestion Service
-        Consumer: Control Module / Orchestrator
-        
-        Downloads the book from Project Gutenberg and splits content into header/body in datalake.
+        - **Provider:** `ingestion-service` (port `7001`)
+        - **Intended Consumer:** Seed / Ingestion Orchestrator Script or Admin Control Module
+        - **Completion Semantics:**
+          - **Synchronous storage:** HTTP `200` guarantees the book has been downloaded from Project Gutenberg, split into `<id>.header.txt` and `<id>.body.txt`, and sealed with `<id>.done` in the datalake.
+          - **Asynchronous indexing:** Indexing happens asynchronously after `OutboxService` sets `book-state=DOWNLOADED` in Hazelcast, publishes `BookDownloaded` to ActiveMQ queue `books.downloaded`, and writes `<id>.published`. Callers observe indexing completion by polling `GET /index/status` or `GET /books/{id}`.
+        - **Idempotency & Retries:** Idempotent by `book_id`. If `<id>.done` already exists, the endpoint does not re-download the book; it returns `200 OK` with `"status": "already_downloaded"` and, if `<id>.published` is missing, re-runs outbox publication. Safe to retry on `500` or network timeout (recommended caller timeout: `30s` to account for external Gutenberg downloads).
       parameters:
         - name: book_id
           in: path
           required: true
+          description: Project Gutenberg Book ID to ingest.
           schema:
             type: integer
           example: 1342
       responses:
         '200':
-          description: Ingestion successfully initiated/completed.
+          description: Book downloaded into the datalake (`downloaded`) or already present (`already_downloaded`).
           content:
             application/json:
+              schema:
+                type: object
+                required:
+                  - book_id
+                  - status
+                properties:
+                  book_id:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [downloaded, already_downloaded]
+                  path:
+                    type: string
+                    description: Present when `status` is `downloaded`.
+              examples:
+                newlyDownloaded:
+                  value:
+                    book_id: 1342
+                    status: "downloaded"
+                    path: "datalake/20261026/18/1342"
+                alreadyDownloaded:
+                  value:
+                    book_id: 1342
+                    status: "already_downloaded"
+        '400':
+          description: Invalid non-integer `book_id`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
               example:
-                book_id: 1342
-                status: "downloaded"
-                path: "datalake/20261026/18/1342"
+                error: "Bad Request"
+                message: "Invalid book ID format."
+        '404':
+          description: Book ID does not exist on Project Gutenberg (`FAILED_404`). Do not retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - book_id
+                  - status
+                properties:
+                  book_id:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [FAILED_404]
+              example:
+                book_id: 99999999
+                status: "FAILED_404"
+        '500':
+          description: Download or filesystem failure during ingestion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
+              example:
+                error: "Failed to download book 1342"
 
   /ingest/status/{book_id}:
     get:
       tags:
         - "Internal Service API"
-      summary: Check download state of a specific book
+      summary: Check whether a book has been downloaded to the datalake
       description: |
-        Provider: Ingestion Service
-        Consumer: Control Module / Indexing Service
+        - **Provider:** `ingestion-service` (port `7001`)
+        - **Intended Consumer:** Control Module / Indexing Service / Verification Scripts
+        - **Completion Semantics:** Synchronous check for the presence of `<book_id>.done` in the datalake.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`).
       parameters:
         - name: book_id
           in: path
@@ -233,21 +385,75 @@ paths:
           example: 1342
       responses:
         '200':
-          description: Ingestion status response.
+          description: Datalake availability status (`available` if `.done` exists, `not_found` otherwise).
           content:
             application/json:
+              schema:
+                type: object
+                required:
+                  - book_id
+                  - status
+                properties:
+                  book_id:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [available, not_found]
               example:
                 book_id: 1342
                 status: "available"
+        '400':
+          description: Invalid non-integer `book_id`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Bad Request"
+                message: "Invalid book ID format."
+
+  /ingest/list:
+    get:
+      tags:
+        - "Internal Service API"
+        - "Operational / Administrative API"
+      summary: List all ingested book IDs that have a .done marker in the datalake
+      description: |
+        - **Provider:** `ingestion-service` (port `7001`)
+        - **Intended Consumer:** Control Module / Operational Scripts / Admin Dashboard
+        - **Completion Semantics:** Synchronous scan of the datalake up to depth 4 for `*.done` markers.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`).
+      responses:
+        '200':
+          description: Count and list of downloaded book IDs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - count
+                  - books
+                properties:
+                  count:
+                    type: integer
+                  books:
+                    type: array
+                    items:
+                      type: integer
+              example:
+                count: 25
+                books: [1, 11, 84, 1342]
 
   /index/update/{book_id}:
     post:
       tags:
         - "Internal Service API"
-      summary: Incrementally process book text and update inverted index
+      summary: Synchronously re-parse and update a single book in the SQLite inverted index
       description: |
-        Provider: Indexing Service
-        Consumer: Control Module / Orchestrator
+        - **Provider:** `indexing-service` (internal port `7002`)
+        - **Intended Consumer:** Control Module / Operational Maintenance Scripts
+        - **Completion Semantics:** Synchronous for SQLite and Hazelcast state (`INDEXED` and incremented `index-published-version`). `BookIndexed` event publication is attempted immediately after commit and backed by `book-indexed-outbox` for at-least-once delivery.
+        - **Idempotency & Retries:** Idempotent (`DELETE` + `INSERT` inside a SQLite transaction under `LOCK_INDEX_WRITER`). Safe to retry on `500`.
       parameters:
         - name: book_id
           in: path
@@ -257,85 +463,90 @@ paths:
           example: 1342
       responses:
         '200':
-          description: Book successfully indexed into SQLite datamart.
+          description: Book successfully indexed into the SQLite datamart.
           content:
             application/json:
+              schema:
+                type: object
+                required:
+                  - book_id
+                  - index
+                properties:
+                  book_id:
+                    type: integer
+                  index:
+                    type: string
+                    enum: [updated]
               example:
                 book_id: 1342
                 index: "updated"
-
-  /status:
-    get:
-      tags:
-        - "Operational / Administrative API"
-      summary: Health check and service status
-      description: |
-        Provider: Search / Ingestion / Indexing Service
-        Consumer: Monitoring / Health Checker
-      responses:
-        '200':
-          description: Service is online and operational.
+        '400':
+          description: Invalid non-integer `book_id`.
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
               example:
-                service: "search-service"
-                status: "running"
-                hazelcast_status: "connected"
-                sqlite_status: "read-only-connected"
-                active_index_version: "42"
-
-  /ingest/list:
-    get:
-      tags:
-        - "Operational / Administrative API"
-      summary: List all ingested book IDs stored in datalake
-      description: |
-        Provider: Ingestion Service
-        Consumer: Control Module / Admin Dashboard
-      responses:
-        '200':
-          description: List of ingested book IDs.
+                error: "Invalid book ID"
+        '404':
+          description: Book files or `.done` marker not found in the datalake.
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
               example:
-                count: 120
-                books: [5, 12, 17, 42, 1342]
+                error: "No directory with a .done marker was found for book 1342"
+        '500':
+          description: Indexing failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
+              example:
+                error: "Could not index book"
 
   /index/rebuild:
     post:
       tags:
         - "Operational / Administrative API"
-      summary: Rebuild inverted index and metadata from full datalake
+      summary: Safely rebuild the entire SQLite inverted index and metadata from the datalake
       description: |
-        Provider: Indexing Service
-        Consumer: Admin / Control Module
-
-        The complete replacement index is built in a separate temporary SQLite database. The active
-        database stays untouched and searchable until every book has been processed successfully;
-        it is then replaced inside a single SQLite transaction, so search never observes an empty or
-        partially rebuilt index. If the rebuild fails, the previous index remains active and the
-        temporary database is removed.
-
-        Only one rebuild can run at a time across all indexing replicas. A concurrent request is
-        rejected with 409 and is not queued.
+        - **Provider:** `indexing-service` (internal port `7002`)
+        - **Intended Consumer:** Admin / Operational Control Module
+        - **Completion Semantics:** Synchronous. The complete replacement index is built in a temporary SQLite database (`metadata.db.rebuild-<uuid>.tmp`). The active database stays untouched and searchable until every ready book (`.done`) has been indexed; rows are then swapped inside a single `BEGIN IMMEDIATE` transaction under `LOCK_INDEX_WRITER` so `search-service` never observes an empty or partial index and open read-only connections/WAL/SHM files remain valid.
+        - **Concurrency & Idempotency:** Serialized across threads and replicas via `AtomicBoolean` and Hazelcast `FencedLock` (`lock:index-rebuild`). Concurrent requests are rejected immediately with `409 Conflict` and are not queued. If a rebuild fails (`500`), the previous index remains active and the temporary database and its `-wal`/`-shm` files are deleted.
       responses:
         '200':
-          description: Full index rebuild complete and activated.
+          description: Full index rebuild completed and atomically activated.
           content:
             application/json:
+              schema:
+                type: object
+                required:
+                  - books_processed
+                  - elapsed_time
+                properties:
+                  books_processed:
+                    type: integer
+                  elapsed_time:
+                    type: string
               example:
-                books_processed: 1000
-                elapsed_time: "35.2s"
+                books_processed: 25
+                elapsed_time: "1.42s"
         '409':
           description: Another rebuild is already in progress. Retry after it finishes.
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
               example:
                 error: "An index rebuild is already in progress"
         '500':
           description: Rebuild failed. The previous index remains active.
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleErrorResponse'
               example:
                 error: "Index rebuild failed. The previous index remains active."
 
@@ -343,28 +554,99 @@ paths:
     get:
       tags:
         - "Operational / Administrative API"
-      summary: Retrieve indexing metrics and statistics
+      summary: Retrieve indexing metrics and SQLite datamart statistics
       description: |
-        Provider: Indexing Service
-        Consumer: Admin Dashboard / Monitoring
+        - **Provider:** `indexing-service` (internal port `7002`)
+        - **Intended Consumer:** Admin Dashboard / Monitoring / E2E Validation Scripts
+        - **Completion Semantics:** Synchronous query returning the current number of indexed books in SQLite, an ISO-8601 timestamp, and the database file size in megabytes.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`).
       responses:
         '200':
           description: Indexing statistics.
           content:
             application/json:
+              schema:
+                type: object
+                required:
+                  - books_indexed
+                  - last_update
+                  - index_size_MB
+                properties:
+                  books_indexed:
+                    type: integer
+                  last_update:
+                    type: string
+                    format: date-time
+                  index_size_MB:
+                    type: number
+                    format: double
               example:
-                books_indexed: 1200
+                books_indexed: 25
                 last_update: "2026-10-26T18:00:00Z"
-                index_size_MB: 42.7
+                index_size_MB: 4.12
+
+  /status:
+    get:
+      tags:
+        - "Operational / Administrative API"
+      summary: Health check and operational status across services
+      description: |
+        - **Provider:** Implemented by `search-service` (port `7000`), `ingestion-service` (port `7001`), and `indexing-service` (port `7002`).
+        - **Intended Consumer:** Docker healthcheck probes, Nginx upstream checks, and monitoring tools.
+        - **Completion Semantics:** Synchronous health inspection. `ingestion-service` and `indexing-service` report `{"service":"...","status":"running"}`. `search-service` additionally reports `hazelcast_status` (`connected`/`disconnected`), `sqlite_status` (`read-only-connected`/`error`), `active_index_version`, and transitions `status` to `degraded` if Hazelcast or SQLite is unhealthy while still returning HTTP `200`.
+        - **Idempotency & Retries:** Safe and idempotent (`GET`).
+      responses:
+        '200':
+          description: Service is reachable and reporting its operational status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - service
+                  - status
+                properties:
+                  service:
+                    type: string
+                    enum: [search-service, ingestion-service, indexing-service]
+                  status:
+                    type: string
+                    enum: [running, degraded]
+                  hazelcast_status:
+                    type: string
+                    enum: [connected, disconnected]
+                  sqlite_status:
+                    type: string
+                    enum: [read-only-connected, error]
+                  active_index_version:
+                    oneOf:
+                      - type: integer
+                      - type: string
+              examples:
+                searchService:
+                  value:
+                    service: "search-service"
+                    status: "running"
+                    hazelcast_status: "connected"
+                    sqlite_status: "read-only-connected"
+                    active_index_version: 25
+                ingestionService:
+                  value:
+                    service: "ingestion-service"
+                    status: "running"
+                indexingService:
+                  value:
+                    service: "indexing-service"
+                    status: "running"
 
 components:
   responses:
     InternalServerError:
       description: |
         Unexpected storage or runtime failure. The body is intentionally generic: it never contains
-        exception messages, SQL errors or file paths. The full exception is logged by the service.
-        This is distinct from a valid query without matches (200 with an empty `results` list) and
-        from an invalid request (400).
+        exception messages, SQL errors, stack traces, or file paths. The full exception is logged
+        server-side via SLF4J. This is distinct from a valid query without matches (`200 OK` with an
+        empty `results` list) and from an invalid request (`400 Bad Request`).
       content:
         application/json:
           schema:
@@ -373,15 +655,6 @@ components:
             error: "Internal server error"
 
   schemas:
-    InternalErrorResponse:
-      type: object
-      required:
-        - error
-      properties:
-        error:
-          type: string
-          enum: ["Internal server error"]
-
     Book:
       type: object
       required:
@@ -398,9 +671,11 @@ components:
         language:
           type: string
           nullable: true
+          description: Normalized ISO 639-1 language code, or `null` if unspecified in the Gutenberg header.
         year:
           type: integer
           nullable: true
+          description: 4-digit Gutenberg release/posting year, or `null` if unspecified in the Gutenberg header.
 
     SearchResponse:
       type: object
@@ -438,3 +713,20 @@ components:
           type: string
         message:
           type: string
+
+    SimpleErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
+    InternalErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["Internal server error"]
