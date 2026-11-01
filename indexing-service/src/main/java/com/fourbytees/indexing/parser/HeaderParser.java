@@ -89,7 +89,9 @@ public class HeaderParser {
                 if (mLang.matches()) {
                     activeField = ActiveField.OTHER;
                     String rawLang = mLang.group(1).trim().toLowerCase();
-                    language = mapLanguageToIso(rawLang, bookId);
+                    // Si contiene varios idiomas separados por coma o punto y coma, tomar el principal
+                    String primaryLang = rawLang.split("[,;]")[0].trim();
+                    language = mapLanguageToIso(primaryLang, bookId);
                     continue;
                 }
 

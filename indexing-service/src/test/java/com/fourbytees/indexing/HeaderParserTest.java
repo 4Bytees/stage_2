@@ -111,6 +111,24 @@ public class HeaderParserTest {
     }
 
     @Test
+    void testHeaderMultipleLanguagesTakesPrimary(@TempDir Path tempDir) throws Exception {
+        String headerContent = """
+            Title: Polyglot Manual
+            Author: Anonymous
+            Language: French, English, German
+            Release date: 2020
+            """;
+
+        Path headerFile = tempDir.resolve("polyglot.header.txt");
+        Files.writeString(headerFile, headerContent);
+
+        BookMetadata meta = HeaderParser.parse(3333, headerFile);
+
+        assertEquals(3333, meta.bookId());
+        assertEquals("fr", meta.language(), "Debe extraer el primer idioma (French -> fr) cuando hay varios");
+    }
+
+    @Test
     void testSqliteRepositoryStoresNullYear(@TempDir Path tempDir) throws Exception {
         Path dbPath = tempDir.resolve("test_null_year.db");
         SqliteRepository repo = new SqliteRepository(dbPath.toString());

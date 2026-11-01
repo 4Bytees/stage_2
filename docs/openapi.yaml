@@ -338,8 +338,6 @@ components:
         - book_id
         - title
         - author
-        - language
-        - year
       properties:
         book_id:
           type: integer
@@ -349,8 +347,10 @@ components:
           type: string
         language:
           type: string
+          nullable: true
         year:
           type: integer
+          nullable: true
 
     SearchResponse:
       type: object
