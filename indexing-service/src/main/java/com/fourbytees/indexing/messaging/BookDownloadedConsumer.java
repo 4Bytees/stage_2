@@ -9,6 +9,7 @@ import com.hazelcast.core.HazelcastInstance;
 import javax.jms.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.fourbytees.indexing.service.IndexingResult;
 
 public class BookDownloadedConsumer implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(BookDownloadedConsumer.class);
@@ -53,14 +54,39 @@ public class BookDownloadedConsumer implements Runnable {
             BookDownloaded event = gson.fromJson(message.getText(), BookDownloaded.class);
             bookId = event.getBook_id();
 
-            boolean processed = orchestrator.indexBook(bookId, false);
+            IndexingResult result = orchestrator.indexDownloadedBook(bookId);
 
-            if (!processed) {
-                message.acknowledge();
-                return;
+            switch (result) {
+                case INDEXED -> {
+                    message.acknowledge();
+                    hazelcast.getMap(SystemConstants.MAP_BOOK_RETRIES).remove(bookId);
+
+                    log.info(
+                            "Book {} was indexed and its JMS message was acknowledged.",
+                            bookId
+                    );
+                }
+
+                case ALREADY_INDEXED -> {
+                    message.acknowledge();
+                    hazelcast.getMap(SystemConstants.MAP_BOOK_RETRIES).remove(bookId);
+
+                    log.info(
+                            "Duplicate delivery for already indexed book {} was acknowledged.",
+                            bookId
+                    );
+                }
+
+                case RETRY_LATER -> {
+                    log.info(
+                            "Book {} is currently claimed by another indexing instance. "
+                                    + "The JMS message will be redelivered.",
+                            bookId
+                    );
+
+                    session.recover();
+                }
             }
-
-            message.acknowledge();
 
         } catch (Exception e) {
             log.error("Error indexando libro ID: {}", bookId, e);

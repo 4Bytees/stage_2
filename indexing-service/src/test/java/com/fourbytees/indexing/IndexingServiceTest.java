@@ -22,6 +22,8 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.fourbytees.indexing.service.BookClaim;
+import com.fourbytees.indexing.service.IndexingResult;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -154,4 +156,172 @@ public class IndexingServiceTest {
         assertEquals(1, rejectedCount.get(), "La segunda réplica debe haber sido rechazada por el replace");
         assertEquals(SystemConstants.STATE_INDEXED, bookState.get(bookId));
     }
+    @Test
+void recentClaimReturnsRetryLater(@TempDir Path tempDir) throws Exception {
+    Path datalake = tempDir.resolve("datalake");
+    Path database = tempDir.resolve("recent_claim.db");
+    int bookId = 101;
+
+    System.setProperty("DATALAKE_PATH", datalake.toString());
+    System.setProperty("SQLITE_DB_PATH", database.toString());
+    System.setProperty("INDEXING_TIMEOUT_MS", "300000");
+
+    IndexingConfig config = new IndexingConfig();
+    SqliteRepository repository = new SqliteRepository(database.toString());
+
+    IndexingOrchestrator orchestrator = new IndexingOrchestrator(
+            config,
+            repository,
+            hazelcastMember,
+            jmsConnection
+    );
+
+    IMap<Integer, String> bookState =
+            hazelcastMember.getMap(SystemConstants.MAP_BOOK_STATE);
+
+    IMap<Integer, BookClaim> bookClaims =
+            hazelcastMember.getMap(SystemConstants.MAP_BOOK_CLAIMS);
+
+    bookState.put(bookId, SystemConstants.STATE_INDEXING);
+    bookClaims.put(
+            bookId,
+            new BookClaim("active-replica", System.currentTimeMillis())
+    );
+
+    IndexingResult result = orchestrator.indexDownloadedBook(bookId);
+
+    assertEquals(
+            IndexingResult.RETRY_LATER,
+            result,
+            "A recent claim must not be taken over."
+    );
+
+    assertEquals(
+            SystemConstants.STATE_INDEXING,
+            bookState.get(bookId)
+    );
+
+    assertEquals(
+            "active-replica",
+            bookClaims.get(bookId).claimantId()
+    );
+}
+
+@Test
+void expiredClaimIsTakenOverAndRemovedAfterSuccess(
+        @TempDir Path tempDir
+) throws Exception {
+    Path datalake = tempDir.resolve("datalake");
+    Path database = tempDir.resolve("expired_claim.db");
+    int bookId = 102;
+
+    prepareBookFiles(datalake, bookId);
+
+    System.setProperty("DATALAKE_PATH", datalake.toString());
+    System.setProperty("SQLITE_DB_PATH", database.toString());
+    System.setProperty("INDEXING_TIMEOUT_MS", "100");
+
+    IndexingConfig config = new IndexingConfig();
+    SqliteRepository repository = new SqliteRepository(database.toString());
+
+    IndexingOrchestrator orchestrator = new IndexingOrchestrator(
+            config,
+            repository,
+            hazelcastMember,
+            jmsConnection
+    );
+
+    IMap<Integer, String> bookState =
+            hazelcastMember.getMap(SystemConstants.MAP_BOOK_STATE);
+
+    IMap<Integer, BookClaim> bookClaims =
+            hazelcastMember.getMap(SystemConstants.MAP_BOOK_CLAIMS);
+
+    bookState.put(bookId, SystemConstants.STATE_INDEXING);
+    bookClaims.put(
+            bookId,
+            new BookClaim(
+                    "failed-replica",
+                    System.currentTimeMillis() - 1_000
+            )
+    );
+
+    IndexingResult result = orchestrator.indexDownloadedBook(bookId);
+
+    assertEquals(
+            IndexingResult.INDEXED,
+            result,
+            "An expired claim must be taken over."
+    );
+
+    assertEquals(
+            SystemConstants.STATE_INDEXED,
+            bookState.get(bookId)
+    );
+
+    assertNull(
+            bookClaims.get(bookId),
+            "The successful claimant must remove its claim."
+    );
+
+    try (
+            java.sql.Connection connection =
+                    DriverManager.getConnection("jdbc:sqlite:" + database);
+
+            Statement statement = connection.createStatement();
+
+            ResultSet resultSet = statement.executeQuery(
+                    "SELECT COUNT(*) FROM books WHERE book_id = " + bookId
+            )
+    ) {
+        assertTrue(resultSet.next());
+        assertEquals(1, resultSet.getInt(1));
+    }
+}
+
+@Test
+void duplicateIndexedBookReturnsAlreadyIndexed(
+        @TempDir Path tempDir
+) throws Exception {
+    Path datalake = tempDir.resolve("datalake");
+    Path database = tempDir.resolve("already_indexed.db");
+    int bookId = 103;
+
+    System.setProperty("DATALAKE_PATH", datalake.toString());
+    System.setProperty("SQLITE_DB_PATH", database.toString());
+    System.setProperty("INDEXING_TIMEOUT_MS", "300000");
+
+    IndexingConfig config = new IndexingConfig();
+    SqliteRepository repository = new SqliteRepository(database.toString());
+
+    IndexingOrchestrator orchestrator = new IndexingOrchestrator(
+            config,
+            repository,
+            hazelcastMember,
+            jmsConnection
+    );
+
+    IMap<Integer, String> bookState =
+            hazelcastMember.getMap(SystemConstants.MAP_BOOK_STATE);
+
+    IMap<Integer, BookClaim> bookClaims =
+            hazelcastMember.getMap(SystemConstants.MAP_BOOK_CLAIMS);
+
+    bookState.put(bookId, SystemConstants.STATE_INDEXED);
+
+    IndexingResult result = orchestrator.indexDownloadedBook(bookId);
+
+    assertEquals(
+            IndexingResult.ALREADY_INDEXED,
+            result,
+            "A duplicate delivery for an indexed book must be acknowledged safely."
+    );
+
+    assertEquals(
+            SystemConstants.STATE_INDEXED,
+            bookState.get(bookId)
+    );
+
+    assertNull(bookClaims.get(bookId));
+}
 }
