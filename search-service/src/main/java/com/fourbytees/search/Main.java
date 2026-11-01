@@ -15,7 +15,7 @@ public class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
-        String dbPath = getEnvOrDefault("METADATA_DB_PATH", getEnvOrDefault("SQLITE_DB_PATH", "datamarts/metadata.db"));
+        String dbPath = getEnvOrDefault("METADATA_DB_PATH", getEnvOrDefault("SQLITE_DB_PATH", "/data/datamarts/metadata.db"));
         int port = Integer.parseInt(getEnvOrDefault("PORT", "7000"));
 
         DatabaseManager dbManager = new DatabaseManager(dbPath);

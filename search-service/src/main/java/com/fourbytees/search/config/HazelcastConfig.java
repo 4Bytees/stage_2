@@ -12,7 +12,7 @@ public class HazelcastConfig {
     private HazelcastInstance hazelcastClient;
 
     public HazelcastConfig() {
-        String hzAddress = getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "localhost:5701"));
+        String hzAddress = getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "hazelcast:5701"));
         String hzCluster = getEnvOrDefault("HZ_CLUSTER_NAME", getEnvOrDefault("HAZELCAST_CLUSTER_NAME", "dev"));
 
         try {

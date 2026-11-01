@@ -8,19 +8,19 @@ public class HazelcastClientFactory {
 
     public static HazelcastInstance create(String address, String clusterName) {
         ClientConfig config = new ClientConfig();
-        if (address != null && !address.isBlank()) {
-            config.getNetworkConfig().addAddress(address);
-        } else {
-            String envAddr = getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "localhost:5701"));
-            config.getNetworkConfig().addAddress(envAddr);
-        }
 
-        if (clusterName != null && !clusterName.isBlank()) {
-            config.setClusterName(clusterName);
-        } else {
-            String envCluster = getEnvOrDefault("HZ_CLUSTER_NAME", getEnvOrDefault("HAZELCAST_CLUSTER_NAME", "dev"));
-            config.setClusterName(envCluster);
-        }
+        // Timeout de conexión inicial (60 s) para evitar reintentos infinitos
+        config.getConnectionStrategyConfig()
+                .getConnectionRetryConfig()
+                .setClusterConnectTimeoutMillis(60000);
+
+        String targetAddr = (address != null && !address.isBlank()) ? address
+                : getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "hazelcast:5701"));
+        config.getNetworkConfig().addAddress(targetAddr);
+
+        String targetCluster = (clusterName != null && !clusterName.isBlank()) ? clusterName
+                : getEnvOrDefault("HZ_CLUSTER_NAME", getEnvOrDefault("HAZELCAST_CLUSTER_NAME", "dev"));
+        config.setClusterName(targetCluster);
 
         return HazelcastClient.newHazelcastClient(config);
     }
@@ -40,4 +40,3 @@ public class HazelcastClientFactory {
         return (val != null && !val.isBlank()) ? val : defaultValue;
     }
 }
-

@@ -1,14 +1,56 @@
+# Maven Build Artifacts
 target/
 *.class
 *.jar
+*.war
+*.ear
+dependency-reduced-pom.xml
+
+# Executables & Binaries
 *.exe
 *.o
+*.so
+*.dll
+
+# Database & SQLite files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Runtime Data Directories
 datalake/*
 !datalake/.gitkeep
 datamarts/*
 !datamarts/.gitkeep
+activemq-data/
+activemq-data/*
+
+# Environment variables & Local secrets
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# IDE & Editor Configurations
 .idea/
 *.iml
 .vscode/
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS Specific
 .DS_Store
-*.log**/dependency-reduced-pom.xml
+Thumbs.db
+
+# Temporary & Python artifacts
+__pycache__/
+*.pyc
+.tmp
+*.tmp

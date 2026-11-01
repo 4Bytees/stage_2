@@ -1,0 +1,163 @@
+services:
+  activemq:
+    image: apache/activemq-classic:5.18.3
+    environment:
+      ACTIVEMQ_OPTS: "-Djetty.host=127.0.0.1 -Xms128m -Xmx${ACTIVEMQ_MAX_HEAP:-256m}"
+    volumes:
+      - "./activemq-data:/opt/apache-activemq/data"
+    expose:
+      - "61616"
+    ports:
+      - "61616:61616"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/61616' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "${ACTIVEMQ_CPUS:-1.0}"
+          memory: "${ACTIVEMQ_MEM_LIMIT:-512M}"
+
+  hazelcast:
+    image: hazelcast/hazelcast:5.3.6
+    environment:
+      HZ_CLUSTERNAME: "${HZ_CLUSTER_NAME:-dev}"
+    volumes:
+      - "./hazelcast/hazelcast.yaml:/opt/hazelcast/config/hazelcast.yaml:ro"
+    expose:
+      - "5701"
+    ports:
+      - "5701:5701"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5701/hazelcast/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "${HAZELCAST_CPUS:-1.0}"
+          memory: "${HAZELCAST_MEM_LIMIT:-512M}"
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: ingestion-service/Dockerfile
+    environment:
+      PORT: "7001"
+      DATALAKE_PATH: "/data/datalake"
+      ACTIVEMQ_URL: "tcp://activemq:61616"
+      HZ_ADDRESS: "hazelcast:5701"
+      HZ_CLUSTER_NAME: "${HZ_CLUSTER_NAME:-dev}"
+      JVM_MAX_HEAP: "${INGESTION_MAX_HEAP:-512m}"
+    volumes:
+      - "./datalake:/data/datalake"
+    ports:
+      - "${INGESTION_PORT:-7001}:7001"
+    depends_on:
+      activemq:
+        condition: service_healthy
+      hazelcast:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7001/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "${INGESTION_CPUS:-1.0}"
+          memory: "${INGESTION_MEM_LIMIT:-768M}"
+
+  indexing:
+    build:
+      context: .
+      dockerfile: indexing-service/Dockerfile
+    environment:
+      PORT: "7002"
+      DATALAKE_PATH: "/data/datalake"
+      SQLITE_DB_PATH: "/data/datamarts/metadata.db"
+      ACTIVEMQ_URL: "tcp://activemq:61616"
+      HZ_ADDRESS: "hazelcast:5701"
+      HZ_CLUSTER_NAME: "${HZ_CLUSTER_NAME:-dev}"
+      INDEX_WORKER_THREADS: "${INDEX_WORKER_THREADS:-4}"
+      JMS_CONSUMERS: "${JMS_CONSUMERS:-2}"
+      MAX_RETRIES: "${MAX_RETRIES:-3}"
+      INDEXING_TIMEOUT_MS: "${INDEXING_TIMEOUT_MS:-300000}"
+      JVM_MAX_HEAP: "${INDEXING_MAX_HEAP:-512m}"
+    volumes:
+      - "./datalake:/data/datalake"
+      - "./datamarts:/data/datamarts"
+    depends_on:
+      activemq:
+        condition: service_healthy
+      hazelcast:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7002/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    deploy:
+      replicas: ${INDEXING_REPLICAS:-1}
+      resources:
+        limits:
+          cpus: "${INDEXING_CPUS:-1.5}"
+          memory: "${INDEXING_MEM_LIMIT:-1024M}"
+
+  search:
+    build:
+      context: .
+      dockerfile: search-service/Dockerfile
+    environment:
+      PORT: "7000"
+      METADATA_DB_PATH: "/data/datamarts/metadata.db"
+      HZ_ADDRESS: "hazelcast:5701"
+      HZ_CLUSTER_NAME: "${HZ_CLUSTER_NAME:-dev}"
+      JVM_MAX_HEAP: "${SEARCH_MAX_HEAP:-512m}"
+    volumes:
+      - "./datamarts:/data/datamarts"
+    depends_on:
+      hazelcast:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7000/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    deploy:
+      replicas: ${SEARCH_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: "${SEARCH_CPUS:-1.0}"
+          memory: "${SEARCH_MEM_LIMIT:-768M}"
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - "./nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
+    ports:
+      - "${SEARCH_PORT:-7000}:80"
+    depends_on:
+      search:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "128M"
+

@@ -1,0 +1,13 @@
+hazelcast:
+  cluster-name: dev
+  network:
+    port:
+      port: 5701
+      auto-increment: false
+    join:
+      multicast:
+        enabled: false
+  cp-subsystem:
+    cp-member-count: 1
+    group-size: 1
+

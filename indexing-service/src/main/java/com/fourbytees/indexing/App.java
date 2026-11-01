@@ -1,10 +1,10 @@
 package com.fourbytees.indexing;
 
+import com.fourbytees.common.factory.HazelcastClientFactory;
+import com.fourbytees.common.factory.JmsClientFactory;
 import com.fourbytees.indexing.config.IndexingConfig;
 import com.fourbytees.indexing.controller.IndexingController;
 import com.fourbytees.indexing.messaging.BookDownloadedConsumer;
-import com.fourbytees.indexing.messaging.HazelcastClientFactory;
-import com.fourbytees.indexing.messaging.JmsClientFactory;
 import com.fourbytees.indexing.repository.SqliteRepository;
 import com.fourbytees.indexing.service.IndexingOrchestrator;
 import com.hazelcast.core.HazelcastInstance;
@@ -20,15 +20,24 @@ public class App {
         IndexingConfig config = new IndexingConfig();
         SqliteRepository repository = new SqliteRepository(config.sqliteDbPath);
 
-        log.info("Conectando con Hazelcast en {}...", config.hazelcastAddress);
-        HazelcastInstance hazelcast = HazelcastClientFactory.create(config.hazelcastAddress);
+        log.info("Conectando con Hazelcast en {} (cluster: {})...", config.hazelcastAddress, config.hazelcastClusterName);
+        HazelcastInstance hazelcast;
+        try {
+            hazelcast = HazelcastClientFactory.create(config.hazelcastAddress, config.hazelcastClusterName);
+            log.info("Indexing Service conectado exitosamente a Hazelcast.");
+        } catch (Exception e) {
+            log.error("Fallo crítico conectando con Hazelcast tras timeout de 60s", e);
+            throw new RuntimeException("Fallo crítico conectando a Hazelcast en " + config.hazelcastAddress, e);
+        }
 
         log.info("Conectando con ActiveMQ en {}...", config.activeMqUrl);
         Connection jmsConn;
         try {
             jmsConn = JmsClientFactory.createConnection(config.activeMqUrl);
+            log.info("Indexing Service conectado exitosamente a ActiveMQ.");
         } catch (Exception e) {
-            throw new RuntimeException("Fallo conectando a ActiveMQ", e);
+            log.error("Fallo conectando a ActiveMQ en {}", config.activeMqUrl, e);
+            throw new RuntimeException("Fallo conectando a ActiveMQ en " + config.activeMqUrl, e);
         }
 
         IndexingOrchestrator orchestrator = new IndexingOrchestrator(config, repository, hazelcast, jmsConn);
@@ -49,6 +58,6 @@ public class App {
         app.get("/index/status", controller::getStatus);
         app.get("/status", controller::getHealth);
 
-        log.info("Indexing Service iniciado en el puerto {}", config.port);
+        log.info("Indexing Service iniciado exitosamente en el puerto {}", config.port);
     }
 }

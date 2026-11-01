@@ -18,9 +18,9 @@ public class App {
 
     public static void main(String[] args) {
         int port = Integer.parseInt(getEnvOrDefault("PORT", "7001"));
-        String datalakePath = getEnvOrDefault("DATALAKE_PATH", "./datalake");
-        String activeMqUrl = getEnvOrDefault("ACTIVEMQ_URL", "tcp://localhost:61616");
-        String hzAddress = getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "localhost:5701"));
+        String datalakePath = getEnvOrDefault("DATALAKE_PATH", "/data/datalake");
+        String activeMqUrl = getEnvOrDefault("ACTIVEMQ_URL", "tcp://activemq:61616");
+        String hzAddress = getEnvOrDefault("HZ_ADDRESS", getEnvOrDefault("HAZELCAST_ADDRESS", "hazelcast:5701"));
         String hzClusterName = getEnvOrDefault("HZ_CLUSTER_NAME", getEnvOrDefault("HAZELCAST_CLUSTER_NAME", "dev"));
 
         GutenbergDownloader downloader = new GutenbergDownloader();
@@ -30,6 +30,7 @@ public class App {
         try {
             log.info("Conectando Ingestion Service a ActiveMQ en {}...", activeMqUrl);
             jmsConn = JmsClientFactory.createConnection(activeMqUrl);
+            log.info("Ingestion Service conectado exitosamente a ActiveMQ.");
         } catch (Exception e) {
             log.warn("Aviso: no se pudo conectar a ActiveMQ ({})", e.getMessage());
         }
@@ -38,6 +39,7 @@ public class App {
         try {
             log.info("Conectando Ingestion Service a Hazelcast en {} (cluster: {})...", hzAddress, hzClusterName);
             hazelcast = HazelcastClientFactory.create(hzAddress, hzClusterName);
+            log.info("Ingestion Service conectado exitosamente a Hazelcast.");
         } catch (Exception e) {
             log.warn("Aviso: no se pudo conectar a Hazelcast ({})", e.getMessage());
         }
