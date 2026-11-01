@@ -62,7 +62,7 @@ public class IngestionServiceTest {
     }
 
     @Test
-    public void testIdempotenciaYAtomicidad(@TempDir Path tempDir) throws IOException {
+    public void testIdempotencyAndAtomicity(@TempDir Path tempDir) throws IOException {
         DatalakeStorage storage = new DatalakeStorage(tempDir.toString());
         int bookId = 9999;
 
@@ -78,44 +78,44 @@ public class IngestionServiceTest {
         DatalakeStorage storage = new DatalakeStorage(tempDir.toString());
         int bookId = 12345;
 
-        // 1. Simulación de crash: Guardamos el libro (se crea .header, .body y .done),
-        // pero el proceso es "matado" antes de publicar el evento a ActiveMQ y Hazelcast.
+        // 1. Simulate a crash: the book is saved (.header, .body and .done are created),
+        // but the process terminates before publishing the event to ActiveMQ and Hazelcast.
         String savedPath = storage.saveBook(bookId, "Title: Crash Test", "Sample body content");
-        assertTrue(storage.isBookDownloaded(bookId), "El libro debe estar descargado con .done");
-        assertFalse(storage.isBookPublished(bookId), "El libro aún NO debe estar marcado como publicado");
-        assertNull(hazelcast.getMap(SystemConstants.MAP_BOOK_STATE).get(bookId), "El estado en Hazelcast aún no debe existir");
+        assertTrue(storage.isBookDownloaded(bookId), "The book must be downloaded with a .done marker");
+        assertFalse(storage.isBookPublished(bookId), "The book must not yet be marked as published");
+        assertNull(hazelcast.getMap(SystemConstants.MAP_BOOK_STATE).get(bookId), "The state in Hazelcast must not exist yet");
 
-        // Preparamos consumidor JMS en la cola books.downloaded
+        // Prepare a JMS consumer on the books.downloaded queue.
         Session session = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         Destination queue = session.createQueue(SystemConstants.QUEUE_BOOKS_DOWNLOADED);
         MessageConsumer consumer = session.createConsumer(queue);
 
-        // 2. Rearranque: Se inicia un nuevo OutboxService y se ejecuta el check de outbox
+        // 2. Restart: a new OutboxService starts and runs the outbox check.
         OutboxService outboxRecovery = new OutboxService(storage, jmsConnection, hazelcast);
         int republished = outboxRecovery.runOutboxCheck();
-        assertEquals(1, republished, "El outbox debe haber detectado y republicado exactamente 1 libro");
+        assertEquals(1, republished, "The outbox must detect and republish exactly 1 book");
 
-        // 3. Verificamos que el evento llegó a la cola con event_id y book_id correctos
+        // 3. Verify that the event arrived on the queue with the expected event_id and book_id.
         Message msg = consumer.receive(3000);
-        assertNotNull(msg, "Debe recibirse el evento en la cola books.downloaded tras el rearranque");
+        assertNotNull(msg, "The event must be received on the books.downloaded queue after restart");
         assertTrue(msg instanceof TextMessage);
         TextMessage textMsg = (TextMessage) msg;
         BookDownloaded event = gson.fromJson(textMsg.getText(), BookDownloaded.class);
-        assertEquals(bookId, event.getBook_id(), "El book_id recibido debe coincidir con el del libro guardado");
-        assertNotNull(event.getEvent_id(), "El evento debe contener un event_id no nulo");
-        assertFalse(event.getEvent_id().isBlank(), "El event_id no debe estar vacío");
+        assertEquals(bookId, event.getBook_id(), "The received book_id must match the saved book");
+        assertNotNull(event.getEvent_id(), "The event must contain a non-null event_id");
+        assertFalse(event.getEvent_id().isBlank(), "The event_id must not be blank");
         assertNotNull(event.getDownloaded_at());
 
-        // 4. Verificamos que el libro ahora sí está marcado como publicado en disco y en Hazelcast (DOWNLOADED)
-        assertTrue(storage.isBookPublished(bookId), "El libro debe quedar marcado con .published");
+        // 4. Verify that the book is now marked as published on disk and in Hazelcast (DOWNLOADED).
+        assertTrue(storage.isBookPublished(bookId), "The book must be marked with .published");
         assertEquals(SystemConstants.STATE_DOWNLOADED, hazelcast.getMap(SystemConstants.MAP_BOOK_STATE).get(bookId),
-                "El estado en Hazelcast debe ser DOWNLOADED tras la publicación");
+                "The state in Hazelcast must be DOWNLOADED after publication");
 
-        // 5. Idempotencia del Outbox: una segunda ejecución no duplica mensajes en la cola
+        // 5. Outbox idempotency: a second check must not duplicate messages on the queue.
         int secondCheck = outboxRecovery.runOutboxCheck();
-        assertEquals(0, secondCheck, "El outbox no debe republicar libros que ya tienen .published");
+        assertEquals(0, secondCheck, "The outbox must not republish books that already have .published");
         Message duplicateMsg = consumer.receive(500);
-        assertNull(duplicateMsg, "No debe haber mensajes duplicados en la cola");
+        assertNull(duplicateMsg, "There must be no duplicate messages on the queue");
 
         consumer.close();
         session.close();

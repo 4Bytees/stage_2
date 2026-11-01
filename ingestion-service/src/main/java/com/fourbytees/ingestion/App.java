@@ -28,20 +28,20 @@ public class App {
 
         Connection jmsConn = null;
         try {
-            log.info("Conectando Ingestion Service a ActiveMQ en {}...", activeMqUrl);
+            log.info("Connecting Ingestion Service to ActiveMQ at {}...", activeMqUrl);
             jmsConn = JmsClientFactory.createConnection(activeMqUrl);
-            log.info("Ingestion Service conectado exitosamente a ActiveMQ.");
+            log.info("Ingestion Service connected to ActiveMQ.");
         } catch (Exception e) {
-            log.warn("Aviso: no se pudo conectar a ActiveMQ ({})", e.getMessage());
+            log.warn("Warning: could not connect to ActiveMQ ({})", e.getMessage());
         }
 
         HazelcastInstance hazelcast = null;
         try {
-            log.info("Conectando Ingestion Service a Hazelcast en {} (cluster: {})...", hzAddress, hzClusterName);
+            log.info("Connecting Ingestion Service to Hazelcast at {} (cluster: {})...", hzAddress, hzClusterName);
             hazelcast = HazelcastClientFactory.create(hzAddress, hzClusterName);
-            log.info("Ingestion Service conectado exitosamente a Hazelcast.");
+            log.info("Ingestion Service connected to Hazelcast.");
         } catch (Exception e) {
-            log.warn("Aviso: no se pudo conectar a Hazelcast ({})", e.getMessage());
+            log.warn("Warning: could not connect to Hazelcast ({})", e.getMessage());
         }
 
         OutboxService outboxService = new OutboxService(storage, jmsConn, hazelcast);
@@ -58,7 +58,7 @@ public class App {
         app.get("/ingest/status/{id}", controller::getStatus);
         app.get("/ingest/list", controller::listBooks);
 
-        log.info("Ingestion Service iniciado exitosamente en el puerto {}", port);
+        log.info("Ingestion Service started on port {}", port);
     }
 
     private static String getEnvOrDefault(String key, String defaultValue) {

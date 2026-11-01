@@ -43,7 +43,7 @@ public class IngestionController {
                     String existingPath = storage.getBookDirectoryPath(bookId);
                     outboxService.publishBook(bookId, existingPath);
                 } catch (Exception ex) {
-                    log.warn("Libro {} ya descargado pero falló publicación outbox.", bookId, ex);
+                    log.warn("Book {} is already downloaded, but outbox publication failed.", bookId, ex);
                 }
             }
             ctx.status(200).result(gson.toJson(Map.of("book_id", bookId, "status", "already_downloaded")));
@@ -58,7 +58,7 @@ public class IngestionController {
                 try {
                     outboxService.publishBook(bookId, savedPath);
                 } catch (Exception ex) {
-                    log.error("Libro {} guardado con .done pero falló envío inmediato a ActiveMQ. Se recuperará en próximo outbox check.", bookId, ex);
+                    log.error("Book {} was saved with a .done marker, but immediate ActiveMQ publication failed. It will be recovered on the next outbox check.", bookId, ex);
                 }
             }
 

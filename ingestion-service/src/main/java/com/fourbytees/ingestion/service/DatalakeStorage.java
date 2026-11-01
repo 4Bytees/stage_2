@@ -9,16 +9,16 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Gestor del almacenamiento en datalake.
+ * Datalake storage manager.
  *
- * <p><b>Estructura de directorio:</b> {@code datalake/<YYYYMMDD>/<HH>/}
- * <p><b>Artefactos de cada libro:</b>
+ * <p><b>Directory layout:</b> {@code datalake/<YYYYMMDD>/<HH>/}
+ * <p><b>Artifacts per book:</b>
  * <ul>
- *   <li>{@code <id>.header.txt}: Metadatos extraídos de la cabecera Gutenberg.</li>
- *   <li>{@code <id>.tmp} &rarr; {@code <id>.body.txt}: Cuerpo del libro movido atómicamente.</li>
- *   <li>{@code <id>.done}: Marcador de fin de descarga e integridad; el libro es visible solo si existe {@code .done}.</li>
- *   <li>{@code <id>.published}: Marcador de confirmación Outbox; indica que el evento {@code BookDownloaded}
- *       fue emitido a ActiveMQ y el estado {@code DOWNLOADED} fue registrado en Hazelcast.</li>
+ *   <li>{@code <id>.header.txt}: Metadata extracted from the Gutenberg header.</li>
+ *   <li>{@code <id>.tmp} &rarr; {@code <id>.body.txt}: Book body moved atomically.</li>
+ *   <li>{@code <id>.done}: Download completion and integrity marker; a book is visible only if {@code .done} exists.</li>
+ *   <li>{@code <id>.published}: Outbox confirmation marker; indicates that the {@code BookDownloaded} event
+ *       was emitted to ActiveMQ and the {@code DOWNLOADED} state was recorded in Hazelcast.</li>
  * </ul>
  */
 public class DatalakeStorage {
