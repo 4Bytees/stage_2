@@ -6,6 +6,7 @@ import com.fourbytees.indexing.config.IndexingConfig;
 import com.fourbytees.indexing.controller.IndexingController;
 import com.fourbytees.indexing.messaging.BookDownloadedConsumer;
 import com.fourbytees.indexing.repository.SqliteRepository;
+import com.fourbytees.indexing.service.IndexRebuilder;
 import com.fourbytees.indexing.service.IndexingOrchestrator;
 import com.hazelcast.core.HazelcastInstance;
 import io.javalin.Javalin;
@@ -41,7 +42,8 @@ public class App {
         }
 
         IndexingOrchestrator orchestrator = new IndexingOrchestrator(config, repository, hazelcast, jmsConn);
-        IndexingController controller = new IndexingController(orchestrator, repository, config);
+        IndexRebuilder rebuilder = new IndexRebuilder(repository, hazelcast, orchestrator, config.workerThreads);
+        IndexingController controller = new IndexingController(orchestrator, repository, rebuilder);
 
         for (int i = 0; i < config.jmsConsumers; i++) {
             Thread t = new Thread(new BookDownloadedConsumer(jmsConn, config, orchestrator, hazelcast), "jms-consumer-" + i);

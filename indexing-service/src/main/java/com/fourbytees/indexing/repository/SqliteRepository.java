@@ -105,11 +105,71 @@ public class SqliteRepository {
         }
     }
 
-    public void clearAll() throws SQLException {
+    public String getDbFilePath() {
+        return dbFilePath;
+    }
+
+    /**
+     * Atomically replaces the whole content of this database with the content of a complete
+     * replacement database.
+     *
+     * <p>The database file itself is never replaced, so open connections, WAL and SHM side files
+     * stay valid. All rows are swapped inside one write transaction: concurrent readers observe
+     * either the previous content or the new content, never an empty or partial index. If anything
+     * fails, the transaction is rolled back and the previous content remains active.</p>
+     */
+    public void replaceContentsFrom(String sourceDbFilePath) throws SQLException {
         try (Connection conn = DriverManager.getConnection(jdbcUrl);
              Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM postings;");
-            stmt.execute("DELETE FROM books;");
+            stmt.execute("PRAGMA busy_timeout=30000;");
+
+            try (PreparedStatement attach = conn.prepareStatement("ATTACH DATABASE ? AS replacement")) {
+                attach.setString(1, sourceDbFilePath);
+                attach.execute();
+            }
+
+            try {
+                stmt.execute("BEGIN IMMEDIATE");
+                try {
+                    stmt.execute("DELETE FROM main.postings");
+                    stmt.execute("DELETE FROM main.books");
+                    stmt.execute("INSERT INTO main.books (book_id, title, author, language, year) "
+                            + "SELECT book_id, title, author, language, year FROM replacement.books");
+                    stmt.execute("INSERT INTO main.postings (term, book_id, freq, positions) "
+                            + "SELECT term, book_id, freq, positions FROM replacement.postings");
+                    stmt.execute("COMMIT");
+                } catch (SQLException e) {
+                    try {
+                        stmt.execute("ROLLBACK");
+                    } catch (SQLException rollbackFailure) {
+                        e.addSuppressed(rollbackFailure);
+                    }
+                    throw e;
+                }
+            } finally {
+                try {
+                    stmt.execute("DETACH DATABASE replacement");
+                } catch (SQLException ignored) {
+                    // The connection is closed right after this block, which detaches anyway.
+                }
+            }
+
+            // Best effort: keep the WAL file small. PASSIVE never blocks readers.
+            stmt.execute("PRAGMA wal_checkpoint(PASSIVE);");
+        }
+    }
+
+    /**
+     * Deletes a SQLite database file together with its WAL, SHM and rollback journal side files.
+     * All connections to the database must be closed.
+     */
+    public static void deleteDatabaseFiles(String dbFilePath) {
+        for (String suffix : new String[] {"", "-wal", "-shm", "-journal"}) {
+            try {
+                java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(dbFilePath + suffix));
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
         }
     }
 

@@ -22,13 +22,14 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class IndexingOrchestrator {
+public class IndexingOrchestrator implements IndexRebuilder.BookSource {
     private static final Logger log =
             LoggerFactory.getLogger(IndexingOrchestrator.class);
 
@@ -200,31 +201,8 @@ public class IndexingOrchestrator {
             IMap<Integer, String> bookState,
             IMap<Integer, BookClaim> bookClaims
     ) throws Exception {
-        Path bookDirectory = findBookDirectory(bookId);
-
-        if (bookDirectory == null) {
-            throw new NoSuchFileException(
-                    "No directory with a .done marker was found for book " + bookId
-            );
-        }
-
-        Path headerFile =
-                bookDirectory.resolve(bookId + ".header.txt");
-
-        Path bodyFile =
-                bookDirectory.resolve(bookId + ".body.txt");
-
-        if (!Files.exists(headerFile) || !Files.exists(bodyFile)) {
-            throw new NoSuchFileException(
-                    "Missing .header.txt or .body.txt file for book " + bookId
-            );
-        }
-
-        HeaderParser.BookMetadata metadata =
-                HeaderParser.parse(bookId, headerFile);
-
-        BodyTokenizer.TokenizedResult tokenized =
-                BodyTokenizer.tokenize(bodyFile);
+        ParsedBook parsed = parseBook(bookId);
+        HeaderParser.BookMetadata metadata = parsed.metadata();
 
         FencedLock lock =
                 hazelcast.getCPSubsystem()
@@ -237,7 +215,7 @@ public class IndexingOrchestrator {
         try {
             repository.saveBookIndex(
                     metadata,
-                    tokenized.postings()
+                    parsed.postings()
             );
 
             newVersion = hazelcast.getCPSubsystem()
@@ -270,6 +248,60 @@ public class IndexingOrchestrator {
                 bookId,
                 newVersion
         );
+    }
+
+    /**
+     * Reads and tokenizes one book from the datalake without touching any index or coordination state.
+     */
+    @Override
+    public ParsedBook parseBook(int bookId) throws Exception {
+        Path bookDirectory = findBookDirectory(bookId);
+
+        if (bookDirectory == null) {
+            throw new NoSuchFileException(
+                    "No directory with a .done marker was found for book " + bookId
+            );
+        }
+
+        Path headerFile =
+                bookDirectory.resolve(bookId + ".header.txt");
+
+        Path bodyFile =
+                bookDirectory.resolve(bookId + ".body.txt");
+
+        if (!Files.exists(headerFile) || !Files.exists(bodyFile)) {
+            throw new NoSuchFileException(
+                    "Missing .header.txt or .body.txt file for book " + bookId
+            );
+        }
+
+        HeaderParser.BookMetadata metadata =
+                HeaderParser.parse(bookId, headerFile);
+
+        BodyTokenizer.TokenizedResult tokenized =
+                BodyTokenizer.tokenize(bodyFile);
+
+        return new ParsedBook(metadata, tokenized.postings());
+    }
+
+    /**
+     * Lists the identifiers of all books that have a {@code .done} marker in the datalake.
+     */
+    @Override
+    public List<Integer> listReadyBookIds() throws IOException {
+        if (!Files.exists(config.datalakePath)) {
+            return List.of();
+        }
+
+        try (Stream<Path> stream = Files.walk(config.datalakePath, 4)) {
+            return stream
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> name.endsWith(".done"))
+                    .map(name -> Integer.parseInt(name.substring(0, name.length() - ".done".length())))
+                    .distinct()
+                    .sorted()
+                    .toList();
+        }
     }
 
     private void removeOwnClaim(

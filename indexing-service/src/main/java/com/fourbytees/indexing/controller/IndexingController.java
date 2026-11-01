@@ -1,33 +1,26 @@
 package com.fourbytees.indexing.controller;
 
-import com.fourbytees.indexing.config.IndexingConfig;
 import com.fourbytees.indexing.repository.SqliteRepository;
+import com.fourbytees.indexing.service.IndexRebuilder;
 import com.fourbytees.indexing.service.IndexingOrchestrator;
 import com.google.gson.Gson;
 import io.javalin.http.Context;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
-import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.*;
-import java.util.stream.Stream;
 
 public class IndexingController {
 
     private final IndexingOrchestrator orchestrator;
     private final SqliteRepository repository;
-    private final IndexingConfig config;
+    private final IndexRebuilder rebuilder;
     private final Gson gson = new Gson();
-    private final ExecutorService rebuildExecutor;
 
-    public IndexingController(IndexingOrchestrator orchestrator, SqliteRepository repository, IndexingConfig config) {
+    public IndexingController(IndexingOrchestrator orchestrator, SqliteRepository repository, IndexRebuilder rebuilder) {
         this.orchestrator = orchestrator;
         this.repository = repository;
-        this.config = config;
-        this.rebuildExecutor = Executors.newFixedThreadPool(config.workerThreads);
+        this.rebuilder = rebuilder;
     }
 
     public void updateSingle(Context ctx) {
@@ -52,37 +45,16 @@ public class IndexingController {
     }
 
     public void rebuildAll(Context ctx) {
-        long startTime = System.currentTimeMillis();
         try {
-            repository.clearAll();
-            List<Integer> readyBookIds;
-
-            try (Stream<Path> stream = Files.walk(config.datalakePath, 4)) {
-                readyBookIds = stream
-                        .filter(p -> p.getFileName().toString().endsWith(".done"))
-                        .map(p -> Integer.parseInt(p.getFileName().toString().replace(".done", "")))
-                        .toList();
-            }
-
-            List<CompletableFuture<Void>> futures = readyBookIds.stream()
-                    .map(id -> CompletableFuture.runAsync(() -> {
-                        try {
-                            orchestrator.indexBook(id, true);
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                    }, rebuildExecutor))
-                    .toList();
-
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-            double elapsedSec = (System.currentTimeMillis() - startTime) / 1000.0;
+            IndexRebuilder.RebuildResult result = rebuilder.rebuild();
             ctx.status(200).result(gson.toJson(Map.of(
-                    "books_processed", readyBookIds.size(),
-                    "elapsed_time", String.format("%.2fs", elapsedSec)
+                    "books_processed", result.booksProcessed(),
+                    "elapsed_time", String.format(Locale.ROOT, "%.2fs", result.elapsedSeconds())
             )));
-        } catch (Exception e) {
-            ctx.status(500).result(gson.toJson(Map.of("error", e.getMessage())));
+        } catch (IndexRebuilder.RebuildInProgressException e) {
+            ctx.status(409).result(gson.toJson(Map.of("error", "An index rebuild is already in progress")));
+        } catch (IndexRebuilder.RebuildFailedException e) {
+            ctx.status(500).result(gson.toJson(Map.of("error", "Index rebuild failed. The previous index remains active.")));
         }
     }
 

@@ -303,14 +303,35 @@ paths:
       description: |
         Provider: Indexing Service
         Consumer: Admin / Control Module
+
+        The complete replacement index is built in a separate temporary SQLite database. The active
+        database stays untouched and searchable until every book has been processed successfully;
+        it is then replaced inside a single SQLite transaction, so search never observes an empty or
+        partially rebuilt index. If the rebuild fails, the previous index remains active and the
+        temporary database is removed.
+
+        Only one rebuild can run at a time across all indexing replicas. A concurrent request is
+        rejected with 409 and is not queued.
       responses:
         '200':
-          description: Full index rebuild complete.
+          description: Full index rebuild complete and activated.
           content:
             application/json:
               example:
                 books_processed: 1000
                 elapsed_time: "35.2s"
+        '409':
+          description: Another rebuild is already in progress. Retry after it finishes.
+          content:
+            application/json:
+              example:
+                error: "An index rebuild is already in progress"
+        '500':
+          description: Rebuild failed. The previous index remains active.
+          content:
+            application/json:
+              example:
+                error: "Index rebuild failed. The previous index remains active."
 
   /index/status:
     get:
