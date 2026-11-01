@@ -39,9 +39,9 @@ public class BookController {
             } else {
                 ctx.status(404).result(gson.toJson(new ErrorResponse("Not Found", "Book with ID " + bookId + " was not found.")));
             }
-        } catch (SQLException e) {
-            log.error("Fallo de acceso a base de datos en /books/{}", bookId, e);
-            ctx.status(500).result(gson.toJson(new ErrorResponse("Internal Server Error", "Database error occurred: " + e.getMessage())));
+        } catch (SQLException | RuntimeException e) {
+            log.error("Unexpected failure while executing /books/{}", bookId, e);
+            ApiErrors.internalServerError(ctx, gson);
         }
     }
 
@@ -51,9 +51,9 @@ public class BookController {
             filters.put("languages", databaseManager.getAvailableLanguages());
             filters.put("years", databaseManager.getAvailableYears());
             ctx.status(200).result(gson.toJson(filters));
-        } catch (SQLException e) {
-            log.error("Fallo de acceso a base de datos en /search/filters", e);
-            ctx.status(500).result(gson.toJson(new ErrorResponse("Internal Server Error", "Database error occurred: " + e.getMessage())));
+        } catch (SQLException | RuntimeException e) {
+            log.error("Unexpected failure while executing /search/filters", e);
+            ApiErrors.internalServerError(ctx, gson);
         }
     }
 }

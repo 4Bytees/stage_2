@@ -96,9 +96,9 @@ public class SearchController {
             searchResult = databaseManager.searchByTerm(
                     q, authorFilter, langFilter, yearFilter, offset, limit
             );
-        } catch (SQLException e) {
-            log.error("Fallo de acceso a base de datos en /search", e);
-            ctx.status(500).result(gson.toJson(new ErrorResponse("Internal Server Error", "Database error occurred while executing search: " + e.getMessage())));
+        } catch (SQLException | RuntimeException e) {
+            log.error("Unexpected failure while executing /search", e);
+            ApiErrors.internalServerError(ctx, gson);
             return;
         }
 

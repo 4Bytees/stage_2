@@ -267,33 +267,85 @@ public class SearchServiceTest {
         assertEquals("read-only-connected", status.get("sqlite_status").getAsString());
     }
 
+    private HttpResponse<String> rawGet(Javalin server, String pathAndQuery) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + server.port() + pathAndQuery))
+                .GET()
+                .build();
+        return client.send(req, HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** Asserts the exact generic body and that nothing internal leaks to the client. */
+    private void assertGenericInternalError(HttpResponse<String> resp, String... forbiddenFragments) {
+        assertEquals(500, resp.statusCode(), "A storage or runtime failure must return HTTP 500");
+        JsonObject json = gson.fromJson(resp.body(), JsonObject.class);
+        assertEquals(1, json.size(), "The 500 body must contain only the 'error' field");
+        assertEquals("Internal server error", json.get("error").getAsString());
+        for (String fragment : forbiddenFragments) {
+            assertFalse(resp.body().contains(fragment), "The response leaks internal detail: " + fragment);
+        }
+    }
+
     @Test
-    void testDatabaseErrorReturns500(@TempDir Path errorDir) throws Exception {
-        // Base de datos sin tablas creadas para forzar SQLException en runtime
+    void testDatabaseErrorReturnsGeneric500(@TempDir Path errorDir) throws Exception {
+        // A database without tables forces an SQLException at query time.
         Path corruptDb = errorDir.resolve("corrupt.db");
-        Files.writeString(corruptDb, ""); // Archivo SQLite vacío sin esquema
+        Files.writeString(corruptDb, "");
         DatabaseManager badDbManager = new DatabaseManager(corruptDb.toString());
-        SearchController badController = new SearchController(new HazelcastConfig(null), badDbManager, gson);
+        SearchController badSearch = new SearchController(new HazelcastConfig(null), badDbManager, gson);
+        BookController badBooks = new BookController(badDbManager, gson);
 
         Javalin badApp = Javalin.create(config -> {
             config.http.defaultContentType = "application/json";
         }).start(0);
 
         try {
-            badApp.get("/search", badController::handleSearch);
+            badApp.get("/search", badSearch::handleSearch);
+            badApp.get("/books/{id}", badBooks::handleGetBookById);
+            badApp.get("/search/filters", badBooks::handleGetFilters);
 
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:" + badApp.port() + "/search?q=adventure"))
-                    .GET()
-                    .build();
-            HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
-
-            assertEquals(500, resp.statusCode(), "Debe retornar HTTP 500 ante fallo en base de datos");
-            JsonObject json = gson.fromJson(resp.body(), JsonObject.class);
-            assertEquals("Internal Server Error", json.get("error").getAsString());
-            assertTrue(json.get("message").getAsString().contains("Database error occurred"));
+            String[] leaks = {"no such table", "SQLITE", "corrupt.db", "SQLException", "Database error"};
+            assertGenericInternalError(rawGet(badApp, "/search?q=adventure"), leaks);
+            assertGenericInternalError(rawGet(badApp, "/books/1"), leaks);
+            assertGenericInternalError(rawGet(badApp, "/search/filters"), leaks);
         } finally {
             badApp.stop();
         }
+    }
+
+    @Test
+    void testUnexpectedRuntimeErrorReturnsGeneric500() throws Exception {
+        DatabaseManager failingManager = new DatabaseManager("unused.db") {
+            @Override
+            public SearchResult searchByTerm(String rawQuery, String authorFilter, String langFilter,
+                                             Integer yearFilter, int offset, int limit) {
+                throw new IllegalStateException("secret internal detail /var/lib/internal/path");
+            }
+        };
+        SearchController failingSearch = new SearchController(new HazelcastConfig(null), failingManager, gson);
+
+        Javalin failingApp = Javalin.create(config -> {
+            config.http.defaultContentType = "application/json";
+        }).start(0);
+
+        try {
+            failingApp.get("/search", failingSearch::handleSearch);
+            assertGenericInternalError(rawGet(failingApp, "/search?q=adventure"),
+                    "secret internal detail", "/var/lib/internal/path", "IllegalStateException");
+        } finally {
+            failingApp.stop();
+        }
+    }
+
+    @Test
+    void testEmptyResultInvalidRequestAndInternalErrorStayDistinct() throws Exception {
+        // Valid query without matches: 200 with an empty result list.
+        JsonObject empty = getJson("/search?q=nonexistentterm", 200);
+        assertEquals(0, empty.getAsJsonArray("results").size());
+
+        // Invalid request: 400 with the documented error and message fields.
+        JsonObject invalid = getJson("/search?q=adventure&limit=0", 400);
+        assertEquals("Bad Request", invalid.get("error").getAsString());
+        assertTrue(invalid.has("message"));
     }
 }

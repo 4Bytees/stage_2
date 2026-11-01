@@ -115,6 +115,8 @@ paths:
               example:
                 error: "Bad Request"
                 message: "Parameter 'year' must be a valid 4-digit integer."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /books/{id}:
     get:
@@ -154,6 +156,8 @@ paths:
               example:
                 error: "Not Found"
                 message: "Book with ID 1342 was not found."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /search/filters:
     get:
@@ -182,6 +186,8 @@ paths:
               example:
                 languages: ["en", "es", "fr"]
                 years: [1719, 1813, 1851, 1897]
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /ingest/{book_id}:
     post:
@@ -352,7 +358,30 @@ paths:
                 index_size_MB: 42.7
 
 components:
+  responses:
+    InternalServerError:
+      description: |
+        Unexpected storage or runtime failure. The body is intentionally generic: it never contains
+        exception messages, SQL errors or file paths. The full exception is logged by the service.
+        This is distinct from a valid query without matches (200 with an empty `results` list) and
+        from an invalid request (400).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InternalErrorResponse'
+          example:
+            error: "Internal server error"
+
   schemas:
+    InternalErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["Internal server error"]
+
     Book:
       type: object
       required:
