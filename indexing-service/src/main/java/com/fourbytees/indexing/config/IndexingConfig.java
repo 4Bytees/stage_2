@@ -14,6 +14,10 @@ public class IndexingConfig {
     public final int jmsConsumers;
     public final int maxRetries;
     public final long indexingTimeoutMs;
+    public final int bookIndexedPublishAttempts;
+    public final long bookIndexedRetryDelayMs;
+    public final long outboxFlushIntervalMs;
+    public final long outboxMinAgeMs;
 
     public IndexingConfig() {
         this.port = Integer.parseInt(getPropOrEnv("PORT", "7002"));
@@ -26,6 +30,10 @@ public class IndexingConfig {
         this.jmsConsumers = Integer.parseInt(getPropOrEnv("JMS_CONSUMERS", "2"));
         this.maxRetries = Integer.parseInt(getPropOrEnv("MAX_RETRIES", "3"));
         this.indexingTimeoutMs = Long.parseLong(getPropOrEnv("INDEXING_TIMEOUT_MS", "300000"));
+        this.bookIndexedPublishAttempts = Integer.parseInt(getPropOrEnv("BOOK_INDEXED_PUBLISH_ATTEMPTS", "3"));
+        this.bookIndexedRetryDelayMs = Long.parseLong(getPropOrEnv("BOOK_INDEXED_RETRY_DELAY_MS", "200"));
+        this.outboxFlushIntervalMs = Long.parseLong(getPropOrEnv("OUTBOX_FLUSH_INTERVAL_MS", "10000"));
+        this.outboxMinAgeMs = Long.parseLong(getPropOrEnv("OUTBOX_MIN_AGE_MS", "5000"));
     }
 
     private static String getPropOrEnv(String key, String defaultValue) {

@@ -6,17 +6,11 @@ import com.fourbytees.indexing.config.IndexingConfig;
 import com.fourbytees.indexing.parser.BodyTokenizer;
 import com.fourbytees.indexing.parser.HeaderParser;
 import com.fourbytees.indexing.repository.SqliteRepository;
-import com.google.gson.Gson;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.cp.lock.FencedLock;
 import com.hazelcast.map.IMap;
 
 import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -36,8 +30,7 @@ public class IndexingOrchestrator implements IndexRebuilder.BookSource {
     private final IndexingConfig config;
     private final SqliteRepository repository;
     private final HazelcastInstance hazelcast;
-    private final Connection jmsConnection;
-    private final Gson gson = new Gson();
+    private final BookIndexedPublisher publisher;
     private final String claimantId;
 
     public IndexingOrchestrator(
@@ -62,11 +55,53 @@ public class IndexingOrchestrator implements IndexRebuilder.BookSource {
             Connection jmsConnection,
             String claimantId
     ) {
+        this(
+                config,
+                repository,
+                hazelcast,
+                new BookIndexedPublisher(
+                        hazelcast,
+                        BookIndexedPublisher.jmsSender(jmsConnection),
+                        config.bookIndexedPublishAttempts,
+                        config.bookIndexedRetryDelayMs
+                ),
+                claimantId
+        );
+    }
+
+    /**
+     * Creates an orchestrator with a custom {@link BookIndexedPublisher} (for example, in unit tests).
+     */
+    public static IndexingOrchestrator withPublisher(
+            IndexingConfig config,
+            SqliteRepository repository,
+            HazelcastInstance hazelcast,
+            BookIndexedPublisher publisher
+    ) {
+        return new IndexingOrchestrator(config, repository, hazelcast, publisher, UUID.randomUUID().toString());
+    }
+
+    private IndexingOrchestrator(
+            IndexingConfig config,
+            SqliteRepository repository,
+            HazelcastInstance hazelcast,
+            BookIndexedPublisher publisher,
+            String claimantId
+    ) {
         this.config = config;
         this.repository = repository;
         this.hazelcast = hazelcast;
-        this.jmsConnection = jmsConnection;
+        this.publisher = publisher;
         this.claimantId = claimantId;
+    }
+
+    /**
+     * Delivers {@code BookIndexed} events that were committed but could not be published earlier.
+     *
+     * @return number of events delivered
+     */
+    public int flushPendingEvents() {
+        return publisher.flushPending(config.outboxMinAgeMs);
     }
 
     /**
@@ -209,6 +244,7 @@ public class IndexingOrchestrator implements IndexRebuilder.BookSource {
                         .getLock(SystemConstants.LOCK_INDEX_WRITER);
 
         long newVersion;
+        BookIndexed event;
 
         lock.lock();
 
@@ -222,6 +258,16 @@ public class IndexingOrchestrator implements IndexRebuilder.BookSource {
                     .getAtomicLong(SystemConstants.ATOMIC_INDEX_VERSION)
                     .incrementAndGet();
 
+            // The event is recorded in the outbox as part of the committed state, so a failed
+            // publication can be retried later without repeating the SQLite write.
+            event = new BookIndexed(
+                    UUID.randomUUID().toString(),
+                    bookId,
+                    newVersion,
+                    Instant.now().toString()
+            );
+            publisher.record(event);
+
             bookState.put(
                     bookId,
                     SystemConstants.STATE_INDEXED
@@ -234,14 +280,7 @@ public class IndexingOrchestrator implements IndexRebuilder.BookSource {
             lock.unlock();
         }
 
-        publishBookIndexed(
-                new BookIndexed(
-                        UUID.randomUUID().toString(),
-                        bookId,
-                        newVersion,
-                        Instant.now().toString()
-                )
-        );
+        publisher.publish(event);
 
         log.info(
                 "Book {} indexed. Published version: {}.",
@@ -342,37 +381,6 @@ public class IndexingOrchestrator implements IndexRebuilder.BookSource {
                     exception
             );
             return null;
-        }
-    }
-
-    private void publishBookIndexed(BookIndexed event) {
-        try (Session session =
-                     jmsConnection.createSession(
-                             false,
-                             Session.AUTO_ACKNOWLEDGE
-                     )) {
-
-            Destination destination =
-                    session.createQueue(
-                            SystemConstants.QUEUE_BOOKS_INDEXED
-                    );
-
-            try (MessageProducer producer =
-                         session.createProducer(destination)) {
-
-                TextMessage message =
-                        session.createTextMessage(
-                                gson.toJson(event)
-                        );
-
-                producer.send(message);
-            }
-        } catch (JMSException exception) {
-            log.error(
-                    "Failed to publish BookIndexed for book {}.",
-                    event.getBook_id(),
-                    exception
-            );
         }
     }
 }

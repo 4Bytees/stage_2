@@ -11,6 +11,9 @@ import com.fourbytees.indexing.service.IndexingOrchestrator;
 import com.hazelcast.core.HazelcastInstance;
 import io.javalin.Javalin;
 import javax.jms.Connection;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +53,19 @@ public class App {
             t.setDaemon(true);
             t.start();
         }
+
+        ScheduledExecutorService outboxRelay = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "book-indexed-outbox-relay");
+            thread.setDaemon(true);
+            return thread;
+        });
+        outboxRelay.scheduleWithFixedDelay(() -> {
+            try {
+                orchestrator.flushPendingEvents();
+            } catch (RuntimeException e) {
+                log.warn("Could not flush pending BookIndexed events.", e);
+            }
+        }, config.outboxFlushIntervalMs, config.outboxFlushIntervalMs, TimeUnit.MILLISECONDS);
 
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";
