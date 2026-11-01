@@ -9,7 +9,7 @@ public class HazelcastClientFactory {
     public static HazelcastInstance create(String address, String clusterName) {
         ClientConfig config = new ClientConfig();
 
-        // Timeout de conexión inicial (60 s) para evitar reintentos infinitos
+        // Initial connection timeout (60 s) to avoid infinite retries
         config.getConnectionStrategyConfig()
                 .getConnectionRetryConfig()
                 .setClusterConnectTimeoutMillis(60000);
