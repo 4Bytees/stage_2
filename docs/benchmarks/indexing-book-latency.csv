@@ -1,0 +1,6 @@
+"book_id","title","category","body_size_kb","index_time_ms","index_time_sec","response"
+"1080","A Modest Proposal","Short pamphlet","37,8","11216,6","11,217","{""book_id"":1080,""index"":""updated""}"
+"16","Peter Pan","Medium novel","281,2","25168,65","25,169","{""book_id"":16,""index"":""updated""}"
+"1342","Pride and Prejudice","Standard novel","753,3","31768,26","31,768","{""book_id"":1342,""index"":""updated""}"
+"2701","Moby Dick","Large novel","1245,5","65778,74","65,779","{""book_id"":2701,""index"":""updated""}"
+"2000","Don Quijote (Spanish)","Very large novel","2172,7","52602,16","52,602","{""book_id"":2000,""index"":""updated""}"

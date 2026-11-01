@@ -1,0 +1,47 @@
+[
+    {
+        "book_id":  1080,
+        "title":  "A Modest Proposal",
+        "category":  "Short pamphlet",
+        "body_size_kb":  37.8,
+        "index_time_ms":  11216.6,
+        "index_time_sec":  11.217,
+        "response":  "{\"book_id\":1080,\"index\":\"updated\"}"
+    },
+    {
+        "book_id":  16,
+        "title":  "Peter Pan",
+        "category":  "Medium novel",
+        "body_size_kb":  281.2,
+        "index_time_ms":  25168.65,
+        "index_time_sec":  25.169,
+        "response":  "{\"book_id\":16,\"index\":\"updated\"}"
+    },
+    {
+        "book_id":  1342,
+        "title":  "Pride and Prejudice",
+        "category":  "Standard novel",
+        "body_size_kb":  753.3,
+        "index_time_ms":  31768.26,
+        "index_time_sec":  31.768,
+        "response":  "{\"book_id\":1342,\"index\":\"updated\"}"
+    },
+    {
+        "book_id":  2701,
+        "title":  "Moby Dick",
+        "category":  "Large novel",
+        "body_size_kb":  1245.5,
+        "index_time_ms":  65778.74,
+        "index_time_sec":  65.779,
+        "response":  "{\"book_id\":2701,\"index\":\"updated\"}"
+    },
+    {
+        "book_id":  2000,
+        "title":  "Don Quijote (Spanish)",
+        "category":  "Very large novel",
+        "body_size_kb":  2172.7,
+        "index_time_ms":  52602.16,
+        "index_time_sec":  52.602,
+        "response":  "{\"book_id\":2000,\"index\":\"updated\"}"
+    }
+]
