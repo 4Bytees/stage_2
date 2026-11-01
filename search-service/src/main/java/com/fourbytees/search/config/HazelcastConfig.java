@@ -16,11 +16,11 @@ public class HazelcastConfig {
         String hzCluster = getEnvOrDefault("HZ_CLUSTER_NAME", getEnvOrDefault("HAZELCAST_CLUSTER_NAME", "dev"));
 
         try {
-            log.info("Conectando Search Service a Hazelcast en {} (cluster: {})...", hzAddress, hzCluster);
+            log.info("Connecting Search Service to Hazelcast at {} (cluster: {})...", hzAddress, hzCluster);
             this.hazelcastClient = HazelcastClientFactory.create(hzAddress, hzCluster);
-            log.info("Search Service conectado exitosamente a Hazelcast.");
+            log.info("Search Service connected to Hazelcast.");
         } catch (Exception e) {
-            log.warn("[HazelcastConfig] ADVERTENCIA: No se pudo conectar a Hazelcast en {}. El servicio operará en modo degradado (consultas directas a SQLite): {}",
+            log.warn("[HazelcastConfig] WARNING: Could not connect to Hazelcast at {}. Service will operate in degraded mode (direct SQLite queries): {}",
                     hzAddress, e.getMessage());
             this.hazelcastClient = null;
         }
@@ -43,7 +43,7 @@ public class HazelcastConfig {
                     .get();
             return String.valueOf(version);
         } catch (Exception e) {
-            log.warn("Error leyendo versión publicada desde Hazelcast: {}", e.getMessage());
+            log.warn("Failed to read published index version from Hazelcast: {}", e.getMessage());
             return "unknown";
         }
     }

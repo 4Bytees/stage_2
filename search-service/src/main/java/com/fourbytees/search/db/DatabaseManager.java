@@ -44,7 +44,7 @@ public class DatabaseManager {
              ResultSet rs = stmt.executeQuery("SELECT 1")) {
             return rs.next();
         } catch (SQLException e) {
-            log.warn("Health check de base de datos falló: {}", e.getMessage());
+            log.warn("Database health check failed: {}", e.getMessage());
             return false;
         }
     }
@@ -52,22 +52,22 @@ public class DatabaseManager {
     public record SearchResult(List<Book> books, int total) {}
 
     /**
-     * Realiza búsqueda por término clave sobre la base de datos SQLite en modo solo lectura.
+     * Executes a single-term keyword search over the SQLite database in read-only mode.
      *
-     * <p><b>Semántica de TF-IDF para término único:</b>
-     * Para una palabra clave dada {@code q}, el factor {@code idf = ln(N / df)} es idéntico y constante
-     * para todos los libros que contienen dicho término (donde N es el total de libros y df los libros con el término).
-     * Por lo tanto, ordenar por {@code p.freq DESC} con desempate por {@code b.book_id ASC} produce
-     * exactamente el ordenamiento relativo por puntuación TF-IDF.
+     * <p><b>Single-term TF-IDF semantics:</b>
+     * For a given keyword {@code q}, the factor {@code idf = ln(N / df)} is identical and constant
+     * across all books that contain the term (where N is the total number of books and df is the
+     * number of books containing the term). Ordering by {@code p.freq DESC} with tie-breaking by
+     * {@code b.book_id ASC} therefore produces the exact relative TF-IDF ranking.
      *
-     * @throws SQLException si ocurre un error de acceso a la base de datos (propagado para respuesta HTTP 500).
+     * @throws SQLException if a database access error occurs (propagated for an HTTP 500 response).
      */
     public SearchResult searchByTerm(String rawQuery, String authorFilter, String langFilter, Integer yearFilter, int offset, int limit) throws SQLException {
         if (rawQuery == null) {
             return new SearchResult(Collections.emptyList(), 0);
         }
 
-        // 1. Normalización con las mismas reglas de tokenización de Stage 1:
+        // 1. Normalization using the frozen Stage 1 tokenization rules:
         String lower = rawQuery.trim().toLowerCase();
         Matcher matcher = WORD_PATTERN.matcher(lower);
         if (!matcher.find()) {
@@ -78,7 +78,7 @@ public class DatabaseManager {
             return new SearchResult(Collections.emptyList(), 0);
         }
 
-        // 2. Filtros
+        // 2. Filters
         String authorPattern = (authorFilter != null && !authorFilter.isBlank())
                 ? "%" + authorFilter.trim().toLowerCase() + "%" : null;
         String langValue = (langFilter != null && !langFilter.isBlank())

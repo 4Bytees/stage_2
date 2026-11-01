@@ -32,7 +32,7 @@ public class SearchController {
             return;
         }
 
-        // Defaults: offset=0, limit=20 (máximo 100)
+        // Defaults: offset=0, limit=20 (maximum 100)
         int offset = 0;
         int limit = 20;
 
