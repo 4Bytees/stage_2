@@ -27,6 +27,7 @@ datamarts/*
 !datamarts/.gitkeep
 activemq-data/
 activemq-data/*
+results/
 
 # Environment variables & Local secrets
 .env

@@ -1,6 +1,6 @@
-# Stage 2 — Service-Oriented Search Engine for Project Gutenberg (Group 4Bytees)
+# Stage 2 — Service-Oriented Search Engine for Project Gutenberg (Group FourByTees / 4Bytees)
 
-Single-host Service-Oriented Architecture (SOA) search engine for Project Gutenberg books, developed for **Stage 2** of the Big Data course at **Universidad de Las Palmas de Gran Canaria (ULPGC)**.
+Single-host Service-Oriented Architecture (SOA) search engine for Project Gutenberg books, developed by **Group FourByTees (`com.fourbytees` / `4Bytees`)** for **Stage 2** of the Big Data course at **Universidad de Las Palmas de Gran Canaria (ULPGC)**.
 
 ---
 
@@ -89,7 +89,7 @@ Both `indexing-service` (`BodyTokenizer`) and `search-service` (`DatabaseManager
 - Input text is converted to lowercase.
 - Token extraction uses the regular expression `\b[a-z]{3,}\b`.
 - 0-based token positions are assigned over **all** regex matches *before* filtering stop words, and positions are **not** renumbered after stop-word removal.
-- **Stop words (31 terms):** `a`, `an`, `and`, `are`, `as`, `at`, `be`, `but`, `by`, `for`, `if`, `in`, `into`, `is`, `it`, `no`, `not`, `of`, `on`, `or`, `such`, `that`, `the`, `their`, `then`, `there`, `these`, `they`, `this`, `to`.
+- **Stop words (30 terms):** `a`, `an`, `and`, `are`, `as`, `at`, `be`, `but`, `by`, `for`, `if`, `in`, `into`, `is`, `it`, `no`, `not`, `of`, `on`, `or`, `such`, `that`, `the`, `their`, `then`, `there`, `these`, `they`, `this`, `to`.
 
 ---
 
@@ -271,12 +271,12 @@ The complete OpenAPI 3.0.3 specification—including **Front-End HTTP APIs**, **
 | **Search (`:7000` via Nginx)** | `GET /search?q=<term>[&author=...][&language=...][&year=...][&offset=0][&limit=20]` | Front-End | `200`, `400`, `500` | Single-term full-text search ordered by TF-IDF (`freq DESC, book_id ASC`). Stop words return `200 OK` with `total: 0`. Multi-word queries or out-of-range parameters return `400 Bad Request`. |
 | **Search (`:7000` via Nginx)** | `GET /books/{id}` | Front-End | `200`, `400`, `404`, `500` | Retrieve metadata (`book_id`, `title`, `author`, nullable `language`, nullable `year`) for a single book ID. |
 | **Search (`:7000` via Nginx)** | `GET /search/filters` | Front-End | `200`, `500` | List distinct non-null `languages` and `years` currently present in the SQLite datamart. |
-| **Search (`:7000` via Nginx)** | `GET /status` | Operational | `200`, `503` | Health check verifying read-only SQLite connectivity (`SELECT 1`). |
+| **Search (`:7000` via Nginx)** | `GET /status` | Operational | `200` | Health check reporting `status` (`running` or `degraded`), `hazelcast_status`, `sqlite_status` (`SELECT 1`), and `active_index_version`. |
 | **Ingestion (`:7001`)** | `POST /ingest/{book_id}` | Operational / Internal | `200`, `400`, `404`, `500` | Synchronously downloads a Gutenberg book into `./datalake` and publishes `BookDownloaded` (`status: "downloaded"` or `"already_downloaded"`). Indexing proceeds asynchronously. |
-| **Ingestion (`:7001`)** | `GET /ingest/status/{book_id}` | Operational | `200`, `400` | Checks whether `<bookId>.done` exists in the datalake (`downloaded` vs `not_found`). |
+| **Ingestion (`:7001`)** | `GET /ingest/status/{book_id}` | Operational | `200`, `400` | Checks whether `<bookId>.done` exists in the datalake (`available` vs `not_found`). |
 | **Ingestion (`:7001`)** | `GET /ingest/list` | Operational | `200`, `500` | Lists all book IDs that have a `<bookId>.done` marker in the datalake (`count`, `books`). |
 | **Ingestion (`:7001`)** | `GET /status` | Operational | `200` | Health and datalake path status for `ingestion-service`. |
-| **Indexing (`:7002` internal)** | `POST /index/update/{id}` | Internal / Operational | `200`, `400`, `500` | Force synchronous re-indexing of a single book from the datalake. |
+| **Indexing (`:7002` internal)** | `POST /index/update/{id}` | Internal / Operational | `200`, `400`, `404`, `500` | Force synchronous re-indexing of a single book from the datalake (`404` if no `.done` marker exists). |
 | **Indexing (`:7002` internal)** | `POST /index/rebuild` | Operational | `200`, `409`, `500` | Safely rebuilds the entire SQLite index in a temporary database and atomically swaps its contents under `lock:index-rebuild` and `index-writer` without exposing partial or empty state to search readers. Concurrent rebuilds return `409 Conflict`. |
 | **Indexing (`:7002` internal)** | `GET /index/status` | Operational | `200` | Returns `books_indexed`, `last_update` (ISO-8601), and `index_size_MB`. |
 | **Indexing (`:7002` internal)** | `GET /status` | Operational | `200` | Liveness check for `indexing-service`. |
@@ -324,7 +324,7 @@ The repository includes a deterministic 25-book Project Gutenberg seed list in [
 All benchmark harnesses and outputs follow the Stage 2 experimental methodology:
 1. **JMH Microbenchmarks** (`indexing-service/src/test/java/com/fourbytees/benchmark/` and `search-service/src/test/java/com/fourbytees/benchmark/`):
    - Evaluates `HeaderParser`, `BodyTokenizer`, `SqliteRepository` single-book and batch insertion, and `DatabaseManager` read-only SQLite search queries.
-   - Configured with **5 warm-up iterations**, **10 measurement iterations**, **1 fork**, and fixed heap (`-Xms2g -Xmx2g`), exporting raw JSON and CSV artifacts.
+   - Configured with **5 warm-up iterations** (`400 ms` each), **10 measurement iterations** (`400 ms` each), **1 fork**, and fixed heap (`-Xms2g -Xmx2g`), exporting raw JSON and CSV artifacts.
 2. **System, Coordination & HTTP Load Benchmarks** (`scripts/run_benchmarks.ps1`):
    - Evaluates indexing throughput and coordination overhead across varying worker threads (`INDEX_WORKER_THREADS` = 1, 2, 4, 8) and indexing replicas (`INDEXING_REPLICAS` = 1, 2), safe `POST /index/rebuild` latency, and HTTP `/search` latency (mean, standard deviation, p95, throughput, error rate) under increasing client concurrency (`c = 1, 4, 8, 16, 32`) along with container CPU/RAM telemetry (`docker stats --no-stream`).
 

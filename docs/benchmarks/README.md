@@ -1,4 +1,4 @@
-# Stage 2 Benchmark Results Summary — Group 4Bytees
+# Stage 2 Benchmark Results Summary — Group FourByTees (`com.fourbytees` / `4Bytees`)
 
 This directory stores the tracked, reproducible benchmark datasets (`CSV` and `JSON`) collected by [`scripts/run_benchmarks.ps1`](../../scripts/run_benchmarks.ps1) against the live Stage 2 Service-Oriented Search Engine.
 
@@ -14,23 +14,23 @@ This directory stores the tracked, reproducible benchmark datasets (`CSV` and `J
 | **Operating System** | Microsoft Windows 11 Pro (10.0.26300, Build 26300) + WSL2 Linux Kernel `6.18.54.1-microsoft-standard-WSL2` |
 | **Java Runtime (JDK)** | Microsoft OpenJDK `17.0.20.1+1-LTS` (64-bit Server VM) |
 | **Container Engine** | Docker Desktop `29.9.2` (`build a82e528`), Docker Compose `v5.6.1` |
-| **Dataset Baseline** | 25 Project Gutenberg seed books (`seed/book_ids.txt`: 23 `en`, 1 `es`, 1 `fr`; SQLite index size `22.56 MB`) |
-| **JMH Configuration** | JMH `1.37`, `Mode.AverageTime` (`us/op`), 5 warmup iterations (1 s each), 10 measurement iterations (1 s each), 1 fork (`-Xms2g -Xmx2g`) |
+| **Dataset Baseline** | 25 Project Gutenberg seed books (`seed/book_ids.txt`: 23 `en`, 1 `es`, 1 `fr`; 100 datalake files across 2 directories = `15.57 MiB` logical / `15.89 MiB` NTFS allocated; SQLite index `22.56 MiB` / `22.60 MiB` across `5,785` pages, `192,167` postings, `66,727` distinct terms, `1,776,589` non-stop-word tokens) |
+| **JMH Configuration** | JMH `1.37`, `Mode.AverageTime` (`us/op`), 5 warmup iterations (400 ms each), 10 measurement iterations (400 ms each), 1 fork (`-Xms2g -Xmx2g`) |
 
 ---
 
 ## 2. JMH Microbenchmarks (`jmh-indexing.csv` / `jmh-search.csv`)
 
-| Module | Benchmark Method | Mode | Samples | Mean (`µs/op`) | 99.9% CI Error (`± µs/op`) | StdDev (`µs/op`) | Min (`µs/op`) | Max (`µs/op`) |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| `indexing-service` | `IndexingMicroBenchmark.headerParsing` | `avgt` | 10 | `545.02` | `79.67` | `52.70` | `454.29` | `622.56` |
-| `indexing-service` | `IndexingMicroBenchmark.bodyTokenization` | `avgt` | 10 | `726.43` | `68.67` | `45.42` | `653.95` | `828.01` |
-| `indexing-service` | `IndexingMicroBenchmark.hazelcastCoordinationCost` | `avgt` | 10 | `102.78` | `18.42` | `12.18` | `89.15` | `124.11` |
-| `indexing-service` | `IndexingMicroBenchmark.sqliteIndexInsertion` | `avgt` | 10 | `10,483.95` | `6,996.90` | `4,628.00` | `5,844.57` | `20,036.86` |
-| `search-service` | `SearchMicroBenchmark.sqliteGetBookById` | `avgt` | 10 | `3,049.84` | `802.44` | `530.76` | `2,286.65` | `3,893.80` |
-| `search-service` | `SearchMicroBenchmark.sqliteSearchUnfiltered` | `avgt` | 10 | `4,274.86` | `1,702.74` | `1,126.26` | `2,761.44` | `6,108.86` |
-| `search-service` | `SearchMicroBenchmark.sqliteSearchFiltered` | `avgt` | 10 | `4,525.42` | `1,460.29` | `965.89` | `3,388.45` | `6,464.51` |
-| `search-service` | `SearchMicroBenchmark.httpSearchClientQuery` | `avgt` | 10 | `8,621.27` | `2,085.44` | `1,379.39` | `6,887.58` | `11,012.82` |
+| Module | Benchmark Method | Mode | Samples | Mean (`µs/op`) | 99.9% CI Error (`± µs/op`) | StdDev (`µs/op`) | Min (`µs/op`) | p50 (`µs/op`) | p95 / Max (`µs/op`) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `indexing-service` | `IndexingMicroBenchmark.headerParsing` | `avgt` | 10 | `545.02` | `79.67` | `52.70` | `454.29` | `539.61` | `622.56` |
+| `indexing-service` | `IndexingMicroBenchmark.bodyTokenization` | `avgt` | 10 | `726.43` | `68.67` | `45.42` | `653.95` | `724.44` | `828.01` |
+| `indexing-service` | `IndexingMicroBenchmark.hazelcastCoordinationCost` | `avgt` | 10 | `102.78` | `18.42` | `12.18` | `89.15` | `103.15` | `124.11` |
+| `indexing-service` | `IndexingMicroBenchmark.sqliteIndexInsertion` | `avgt` | 10 | `10,483.95` | `6,996.90` | `4,628.00` | `6,159.22` | `8,240.44` | `17,994.40` |
+| `search-service` | `SearchMicroBenchmark.sqliteGetBookById` | `avgt` | 10 | `3,049.84` | `802.44` | `530.76` | `2,395.42` | `2,926.46` | `3,859.00` |
+| `search-service` | `SearchMicroBenchmark.sqliteSearchUnfiltered` | `avgt` | 10 | `4,274.86` | `1,702.74` | `1,126.26` | `2,761.44` | `4,204.90` | `6,108.86` |
+| `search-service` | `SearchMicroBenchmark.sqliteSearchFiltered` | `avgt` | 10 | `4,525.42` | `1,460.29` | `965.89` | `3,493.89` | `4,036.53` | `6,430.58` |
+| `search-service` | `SearchMicroBenchmark.httpSearchClientQuery` | `avgt` | 10 | `8,621.27` | `2,085.44` | `1,379.39` | `6,556.33` | `8,634.01` | `10,467.51` |
 
 ---
 
