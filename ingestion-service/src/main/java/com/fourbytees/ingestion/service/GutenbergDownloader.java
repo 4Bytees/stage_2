@@ -38,11 +38,11 @@ public class GutenbergDownloader {
             }
 
             if (attempt == maxRetries) {
-                throw new IOException("HTTP Error " + response.statusCode() + " tras " + maxRetries + " intentos.");
+                throw new IOException("HTTP error " + response.statusCode() + " after " + maxRetries + " attempts.");
             }
             Thread.sleep(1000 * attempt);
         }
-        throw new IOException("Error desconocido descargando libro " + bookId);
+        throw new IOException("Unknown error while downloading book " + bookId);
     }
 
     private String[] splitHeaderAndBody(String fullText) {

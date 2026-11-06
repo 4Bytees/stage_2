@@ -1,0 +1,67 @@
+[
+    {
+        "concurrency":  1,
+        "total_requests":  25,
+        "successful":  25,
+        "errors":  0,
+        "wall_time_ms":  1069.48,
+        "throughput_rps":  23.38,
+        "mean_latency_ms":  39.65,
+        "stddev_ms":  17.07,
+        "p50_latency_ms":  43.66,
+        "p95_latency_ms":  63.35,
+        "p99_latency_ms":  67.24
+    },
+    {
+        "concurrency":  4,
+        "total_requests":  100,
+        "successful":  100,
+        "errors":  0,
+        "wall_time_ms":  631.36,
+        "throughput_rps":  158.39,
+        "mean_latency_ms":  23.7,
+        "stddev_ms":  10.69,
+        "p50_latency_ms":  25.43,
+        "p95_latency_ms":  39.84,
+        "p99_latency_ms":  45.62
+    },
+    {
+        "concurrency":  8,
+        "total_requests":  200,
+        "successful":  200,
+        "errors":  0,
+        "wall_time_ms":  517.95,
+        "throughput_rps":  386.14,
+        "mean_latency_ms":  18.09,
+        "stddev_ms":  12.04,
+        "p50_latency_ms":  15.94,
+        "p95_latency_ms":  43.8,
+        "p99_latency_ms":  52.99
+    },
+    {
+        "concurrency":  16,
+        "total_requests":  400,
+        "successful":  400,
+        "errors":  0,
+        "wall_time_ms":  978.54,
+        "throughput_rps":  408.77,
+        "mean_latency_ms":  32.22,
+        "stddev_ms":  24.35,
+        "p50_latency_ms":  25.57,
+        "p95_latency_ms":  84.79,
+        "p99_latency_ms":  99.44
+    },
+    {
+        "concurrency":  32,
+        "total_requests":  800,
+        "successful":  800,
+        "errors":  0,
+        "wall_time_ms":  1730.31,
+        "throughput_rps":  462.35,
+        "mean_latency_ms":  56.87,
+        "stddev_ms":  46,
+        "p50_latency_ms":  43.85,
+        "p95_latency_ms":  155.37,
+        "p99_latency_ms":  182.72
+    }
+]

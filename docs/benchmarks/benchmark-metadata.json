@@ -1,0 +1,14 @@
+{
+    "timestamp_utc":  "2026-11-01T21:07:49Z",
+    "git_branch":  "feat/coordination-benchmarks",
+    "git_commit":  "5c4ee06",
+    "jdk_version":  "openjdk version \"17.0.20.1\" 2026-08-18 LTS | OpenJDK Runtime Environment Microsoft-14940689 (build 17.0.20.1+1-LTS)",
+    "docker_version":  "Docker version 29.9.2, build a82e528",
+    "compose_version":  "Docker Compose version v5.6.1",
+    "jmh_config":  {
+                       "warmup_iterations":  5,
+                       "measurement_iterations":  10,
+                       "forks":  1,
+                       "jvm_args":  "-Xms2g -Xmx2g"
+                   }
+}

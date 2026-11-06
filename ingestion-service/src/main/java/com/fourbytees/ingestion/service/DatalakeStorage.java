@@ -8,6 +8,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
+/**
+ * Datalake storage manager.
+ *
+ * <p><b>Directory layout:</b> {@code datalake/<YYYYMMDD>/<HH>/}
+ * <p><b>Artifacts per book:</b>
+ * <ul>
+ *   <li>{@code <id>.header.txt}: Metadata extracted from the Gutenberg header.</li>
+ *   <li>{@code <id>.tmp} &rarr; {@code <id>.body.txt}: Book body moved atomically.</li>
+ *   <li>{@code <id>.done}: Download completion and integrity marker; a book is visible only if {@code .done} exists.</li>
+ *   <li>{@code <id>.published}: Outbox confirmation marker; indicates that the {@code BookDownloaded} event
+ *       was emitted to ActiveMQ and the {@code DOWNLOADED} state was recorded in Hazelcast.</li>
+ * </ul>
+ */
 public class DatalakeStorage {
     private final Path baseDir;
 
@@ -43,17 +56,48 @@ public class DatalakeStorage {
 
     public boolean isBookDownloaded(int bookId) {
         if (!Files.exists(baseDir)) return false;
-        try (Stream<Path> stream = Files.walk(baseDir)) {
+        try (Stream<Path> stream = Files.walk(baseDir, 4)) {
             return stream.anyMatch(p -> p.getFileName().toString().equals(bookId + ".done"));
         } catch (IOException e) {
             return false;
         }
     }
 
+    public Path findBookDirectory(int bookId) {
+        if (!Files.exists(baseDir)) return null;
+        try (Stream<Path> stream = Files.walk(baseDir, 4)) {
+            return stream.filter(Files::isDirectory)
+                    .filter(dir -> Files.exists(dir.resolve(bookId + ".done")))
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    public boolean isBookPublished(int bookId) {
+        Path dir = findBookDirectory(bookId);
+        if (dir == null) return false;
+        return Files.exists(dir.resolve(bookId + ".published"));
+    }
+
+    public void markBookPublished(int bookId) throws IOException {
+        Path dir = findBookDirectory(bookId);
+        if (dir != null) {
+            Path publishedMarker = dir.resolve(bookId + ".published");
+            Files.writeString(publishedMarker, "PUBLISHED", StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        }
+    }
+
+    public String getBookDirectoryPath(int bookId) {
+        Path dir = findBookDirectory(bookId);
+        return dir != null ? dir.resolve(String.valueOf(bookId)).toString() : null;
+    }
+
     public List<Integer> listDownloadedBooks() {
         List<Integer> books = new ArrayList<>();
         if (!Files.exists(baseDir)) return books;
-        try (Stream<Path> stream = Files.walk(baseDir)) {
+        try (Stream<Path> stream = Files.walk(baseDir, 4)) {
             stream.filter(p -> p.getFileName().toString().endsWith(".done"))
                   .forEach(p -> {
                       String fileName = p.getFileName().toString();
