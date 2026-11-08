@@ -1,0 +1,5 @@
+"Benchmark","Mode","Threads","Samples","Score","Score Error (99,9%)","Unit"
+"com.fourbytees.benchmark.IndexingMicroBenchmark.bodyTokenization","avgt",1,10,"726,425346","68,665482","us/op"
+"com.fourbytees.benchmark.IndexingMicroBenchmark.hazelcastCoordinationCost","avgt",1,10,"102,777134","18,420824","us/op"
+"com.fourbytees.benchmark.IndexingMicroBenchmark.headerParsing","avgt",1,10,"545,021740","79,674218","us/op"
+"com.fourbytees.benchmark.IndexingMicroBenchmark.sqliteIndexInsertion","avgt",1,10,"10483,953369","6996,902487","us/op"

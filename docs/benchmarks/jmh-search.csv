@@ -1,0 +1,5 @@
+"Benchmark","Mode","Threads","Samples","Score","Score Error (99,9%)","Unit"
+"com.fourbytees.benchmark.SearchMicroBenchmark.httpSearchClientQuery","avgt",1,10,"8621,274676","2085,442128","us/op"
+"com.fourbytees.benchmark.SearchMicroBenchmark.sqliteGetBookById","avgt",1,10,"3049,844704","802,437916","us/op"
+"com.fourbytees.benchmark.SearchMicroBenchmark.sqliteSearchFiltered","avgt",1,10,"4525,421522","1460,286156","us/op"
+"com.fourbytees.benchmark.SearchMicroBenchmark.sqliteSearchUnfiltered","avgt",1,10,"4274,855663","1702,738337","us/op"

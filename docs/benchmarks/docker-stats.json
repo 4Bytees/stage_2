@@ -1,0 +1,66 @@
+[
+    {
+        "container":  "stage_2-indexing-2",
+        "cpu_pct":  "3.66%",
+        "mem_usage":  "107.2MiB / 1GiB",
+        "mem_pct":  "10.47%",
+        "net_io":  "68.5kB / 294kB",
+        "block_io":  "0B / 1.31MB"
+    },
+    {
+        "container":  "stage_2-nginx-1",
+        "cpu_pct":  "0.00%",
+        "mem_usage":  "4.438MiB / 128MiB",
+        "mem_pct":  "3.47%",
+        "net_io":  "1.67MB / 1.84MB",
+        "block_io":  "0B / 12.3kB"
+    },
+    {
+        "container":  "stage_2-search-2",
+        "cpu_pct":  "0.54%",
+        "mem_usage":  "127.2MiB / 768MiB",
+        "mem_pct":  "16.56%",
+        "net_io":  "487kB / 1.54MB",
+        "block_io":  "0B / 1.7MB"
+    },
+    {
+        "container":  "stage_2-indexing-1",
+        "cpu_pct":  "3.12%",
+        "mem_usage":  "216.9MiB / 1GiB",
+        "mem_pct":  "21.18%",
+        "net_io":  "261kB / 917kB",
+        "block_io":  "0B / 25.2MB"
+    },
+    {
+        "container":  "stage_2-search-1",
+        "cpu_pct":  "0.54%",
+        "mem_usage":  "129.1MiB / 768MiB",
+        "mem_pct":  "16.81%",
+        "net_io":  "485kB / 1.58MB",
+        "block_io":  "0B / 1.69MB"
+    },
+    {
+        "container":  "stage_2-ingestion-1",
+        "cpu_pct":  "0.57%",
+        "mem_usage":  "92.84MiB / 768MiB",
+        "mem_pct":  "12.09%",
+        "net_io":  "68.1kB / 299kB",
+        "block_io":  "0B / 291kB"
+    },
+    {
+        "container":  "stage_2-activemq-1",
+        "cpu_pct":  "0.24%",
+        "mem_usage":  "178.4MiB / 512MiB",
+        "mem_pct":  "34.85%",
+        "net_io":  "112kB / 72kB",
+        "block_io":  "0B / 901kB"
+    },
+    {
+        "container":  "stage_2-hazelcast-1",
+        "cpu_pct":  "0.98%",
+        "mem_usage":  "182.3MiB / 512MiB",
+        "mem_pct":  "35.60%",
+        "net_io":  "3.64MB / 905kB",
+        "block_io":  "0B / 918kB"
+    }
+]
