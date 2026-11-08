@@ -1,10 +1,10 @@
 package com.fourbytees.indexing;
 
 import com.fourbytees.common.factory.HazelcastClientFactory;
+import com.fourbytees.common.factory.JmsClientFactory;
 import com.fourbytees.indexing.config.IndexingConfig;
 import com.fourbytees.indexing.controller.IndexingController;
 import com.fourbytees.indexing.messaging.BookDownloadedConsumer;
-import com.fourbytees.indexing.messaging.JmsClientFactory;
 import com.fourbytees.indexing.repository.SqliteRepository;
 import com.fourbytees.indexing.service.IndexRebuilder;
 import com.fourbytees.indexing.service.IndexingOrchestrator;
@@ -37,7 +37,12 @@ public class App {
         log.info("Connecting to ActiveMQ at {}...", config.activeMqUrl);
         Connection jmsConn;
         try {
-            jmsConn = JmsClientFactory.createConnection(config.activeMqUrl, config);
+            jmsConn = JmsClientFactory.createConnection(
+                    config.activeMqUrl,
+                    config.redeliveryInitialDelayMs,
+                    config.redeliveryBackoffMultiplier,
+                    config.redeliveryMaxDelayMs,
+                    config.redeliveryMaximumRedeliveries);
             log.info("Indexing Service connected to ActiveMQ.");
         } catch (Exception e) {
             log.error("Failed to connect to ActiveMQ at {}", config.activeMqUrl, e);

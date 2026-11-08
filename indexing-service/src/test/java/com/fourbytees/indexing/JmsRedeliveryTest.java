@@ -2,9 +2,9 @@ package com.fourbytees.indexing;
 
 import com.fourbytees.common.constants.SystemConstants;
 import com.fourbytees.common.events.BookDownloaded;
+import com.fourbytees.common.factory.JmsClientFactory;
 import com.fourbytees.indexing.config.IndexingConfig;
 import com.fourbytees.indexing.messaging.BookDownloadedConsumer;
-import com.fourbytees.indexing.messaging.JmsClientFactory;
 import com.fourbytees.indexing.repository.SqliteRepository;
 import com.fourbytees.indexing.service.BookClaim;
 import com.fourbytees.indexing.service.IndexingOrchestrator;
@@ -135,7 +135,12 @@ public class JmsRedeliveryTest {
         bookState.put(bookId, SystemConstants.STATE_INDEXING);
         bookClaims.put(bookId, new BookClaim("other-replica", System.currentTimeMillis()));
 
-        try (Connection jmsConn = JmsClientFactory.createConnection(BROKER_URL, config)) {
+        try (Connection jmsConn = JmsClientFactory.createConnection(
+                BROKER_URL,
+                config.redeliveryInitialDelayMs,
+                config.redeliveryBackoffMultiplier,
+                config.redeliveryMaxDelayMs,
+                config.redeliveryMaximumRedeliveries)) {
             IndexingOrchestrator orchestrator = new IndexingOrchestrator(config, repository, hazelcast, jmsConn);
             Thread consumerThread = new Thread(
                     new BookDownloadedConsumer(jmsConn, config, orchestrator, hazelcast),
@@ -154,7 +159,10 @@ public class JmsRedeliveryTest {
             }
 
             long elapsedMs = System.currentTimeMillis() - sentAtMs;
+            // Allow post-commit BookIndexed publication and JMS client acknowledgement to complete before interrupting receive().
+            Thread.sleep(150L);
             consumerThread.interrupt();
+            consumerThread.join(1_000L);
 
             assertEquals(SystemConstants.STATE_INDEXED, bookState.get(bookId),
                     "The book must reach INDEXED after the initial claim expires and the message is redelivered.");
@@ -198,7 +206,12 @@ public class JmsRedeliveryTest {
         IMap<Integer, String> bookState = hazelcast.getMap(SystemConstants.MAP_BOOK_STATE);
         bookState.put(missingBookId, SystemConstants.STATE_DOWNLOADED);
 
-        try (Connection jmsConn = JmsClientFactory.createConnection(BROKER_URL, config)) {
+        try (Connection jmsConn = JmsClientFactory.createConnection(
+                BROKER_URL,
+                config.redeliveryInitialDelayMs,
+                config.redeliveryBackoffMultiplier,
+                config.redeliveryMaxDelayMs,
+                config.redeliveryMaximumRedeliveries)) {
             IndexingOrchestrator orchestrator = new IndexingOrchestrator(config, repository, hazelcast, jmsConn);
             Thread consumerThread = new Thread(
                     new BookDownloadedConsumer(jmsConn, config, orchestrator, hazelcast),
@@ -213,7 +226,9 @@ public class JmsRedeliveryTest {
                  MessageConsumer dlqConsumer = dlqSession.createConsumer(
                          dlqSession.createQueue(SystemConstants.QUEUE_BOOKS_DLQ))) {
                 TextMessage dlqMessage = (TextMessage) dlqConsumer.receive(10_000L);
+                Thread.sleep(50L);
                 consumerThread.interrupt();
+                consumerThread.join(1_000L);
 
                 assertNotNull(dlqMessage, "A DLQ message must be produced when retries are exhausted.");
                 assertTrue(dlqMessage.getText().contains("\"book_id\": " + missingBookId));

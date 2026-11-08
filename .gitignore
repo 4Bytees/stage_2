@@ -56,3 +56,11 @@ __pycache__/
 *.pyc
 .tmp
 *.tmp
+
+# LaTeX Sources & Auxiliary Build Files
+*.tex
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
