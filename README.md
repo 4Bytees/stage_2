@@ -2,6 +2,8 @@
 
 Single-host Service-Oriented Architecture (SOA) search engine for Project Gutenberg books, developed by **Group FourByTees (`com.fourbytees` / `4Bytees`)** for **Stage 2** of the Big Data course at **Universidad de Las Palmas de Gran Canaria (ULPGC)**.
 
+- **Technical Report (PDF):** [`Stage_2_FourByTees.pdf`](Stage_2_FourByTees.pdf)
+
 ---
 
 ## Table of Contents
@@ -129,6 +131,7 @@ stage_2/
 ├── tests/
 │   └── search-api-tests.http    # 22 HTTP request definitions for IDE REST clients (IntelliJ / VS Code)
 ├── .env.example                 # Environment template for Docker Compose
+├── Stage_2_FourByTees.pdf       # Official Stage 2 Technical Report & Benchmark Evaluation (PDF)
 ├── docker-compose.yml           # Single-host multi-container orchestration
 └── pom.xml                      # Root Maven multimodule reactor POM
 ```
