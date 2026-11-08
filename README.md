@@ -1,6 +1,6 @@
 # Stage 2 — Service-Oriented Search Engine for Project Gutenberg (Group FourByTees / 4Bytees)
 
-Single-host Service-Oriented Architecture (SOA) search engine for Project Gutenberg books, developed by **Group FourByTees (`com.fourbytees` / `4Bytees`)** for **Stage 2** of the Big Data course at **Universidad de Las Palmas de Gran Canaria (ULPGC)**.
+Single-host Service-Oriented Architecture (SOA) search engine for Project Gutenberg books, developed by **Group FourByTees (`4Bytees`)** for **Stage 2** of the Big Data course at **Universidad de Las Palmas de Gran Canaria (ULPGC)**.
 
 - **Technical Report (PDF):** [`Stage_2_FourByTees.pdf`](Stage_2_FourByTees.pdf)
 
